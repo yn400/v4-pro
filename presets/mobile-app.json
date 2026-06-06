@@ -1,0 +1,14 @@
+{
+  "preset": "mobile-app",
+  "description": "移动端应用 / Mobile Application",
+  "tech_stack": {
+    "framework": ["React Native", "Flutter"],
+    "language": ["TypeScript", "Dart"],
+    "platform": ["iOS", "Android"]
+  },
+  "verify": {
+    "static_analysis": true,
+    "security_scan": true,
+    "arch_compliance": false
+  }
+}

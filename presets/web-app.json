@@ -1,0 +1,15 @@
+{
+  "preset": "web-app",
+  "description": "通用 Web 应用 / General Web Application",
+  "tech_stack": {
+    "frontend": ["React", "TypeScript", "Vite"],
+    "backend": ["FastAPI", "Python"],
+    "database": ["PostgreSQL"],
+    "deploy": ["Docker"]
+  },
+  "verify": {
+    "static_analysis": true,
+    "security_scan": true,
+    "arch_compliance": true
+  }
+}

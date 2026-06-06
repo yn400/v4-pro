@@ -1,0 +1,41 @@
+# ── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+MANIFEST
+
+# ── 测试 / 覆盖率 ────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ── 虚拟环境 ─────────────────────────────────────────────────
+.venv/
+venv/
+.env
+
+# ── IDE ──────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── 工作区产物（v4-pro 自己跑出来的）─────────────────────────
+v4_workspace/
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+audit-test-output.json
+temp_verify_*
+*.log

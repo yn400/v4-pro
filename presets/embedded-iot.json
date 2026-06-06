@@ -1,0 +1,14 @@
+{
+  "preset": "embedded-iot",
+  "description": "嵌入式/IoT 项目 / Embedded IoT Project",
+  "tech_stack": {
+    "language": ["C", "C++", "MicroPython"],
+    "platform": ["ESP32", "STM32", "Arduino"],
+    "protocols": ["MQTT", "BLE", "WiFi"]
+  },
+  "verify": {
+    "static_analysis": true,
+    "security_scan": true,
+    "arch_compliance": true
+  }
+}

@@ -1,0 +1,84 @@
+你是一名顶尖的软件架构师。请基于以下研究结果，输出一份完整的产品设计文档。
+
+## 研究背景
+{{ research_json }}
+
+## 用户补充需求
+{{ requirement }}
+
+## 输出要求
+请严格按以下 JSON 格式输出（不要输出其他内容）：
+
+```json
+{
+  "product_name": "产品名称",
+  "elevator_pitch": "一句话产品定位",
+  "architecture": {
+    "overview": "架构概述（文字描述）",
+    "mermaid_diagram": "Mermaid 架构图代码（graph TD 或 C4 风格）",
+    "layers": [
+      {
+        "name": "层名（如 Presentation / Business / Data）",
+        "responsibility": "该层职责",
+        "modules": ["模块1", "模块2"],
+        "allowed_dependencies": ["可以依赖的层"],
+        "forbidden_dependencies": ["禁止依赖的层"]
+      }
+    ]
+  },
+  "tech_stack": {
+    "language": "主要编程语言",
+    "framework": "主框架",
+    "database": "数据库",
+    "cache": "缓存方案",
+    "message_queue": "消息队列（如需要）",
+    "other": ["其他技术选型"]
+  },
+  "modules": [
+    {
+      "name": "模块名",
+      "responsibility": "模块职责",
+      "public_api": ["对外暴露的接口/方法"],
+      "dependencies": ["依赖的其他模块"],
+      "key_entities": ["核心实体"]
+    }
+  ],
+  "data_model": {
+    "entities": [
+      {
+        "name": "实体名",
+        "fields": [
+          {"name": "字段名", "type": "类型", "description": "说明", "nullable": false}
+        ],
+        "relationships": [
+          {"target": "关联实体", "type": "1:1|1:N|N:M", "description": "关系说明"}
+        ]
+      }
+    ]
+  },
+  "api_design": {
+    "style": "REST|GraphQL|gRPC",
+    "endpoints": [
+      {"method": "GET", "path": "/api/v1/xxx", "description": "说明"}
+    ]
+  },
+  "coding_standards": {
+    "max_line_length": 120,
+    "naming_style": "snake_case|camelCase|PascalCase",
+    "require_type_annotations": true,
+    "require_docstrings": true,
+    "error_handling_pattern": "try-except|Result类型|Either类型"
+  },
+  "non_functional_requirements": {
+    "performance": "性能目标",
+    "security": "安全要求",
+    "scalability": "可扩展性要求"
+  }
+}
+```
+
+## 注意事项
+- Mermaid 图必须是有效的 Mermaid 语法
+- 模块划分粒度适中（5-15 个模块为宜）
+- 编码规范要具体可执行
+- 如果研究结果中有技术栈建议，优先参考

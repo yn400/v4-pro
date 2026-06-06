@@ -1,0 +1,57 @@
+# V4 Pro PR Quality Gate
+#
+# Automatically audits PR code changes and posts inline annotations.
+# 
+# Usage: add to your repo's .github/workflows/v4-pro-gate.yml:
+#
+#   name: V4 Pro Quality Gate
+#   on: [pull_request]
+#   jobs:
+#     quality-gate:
+#       uses: yn400/v4-pro/.github/workflows/pr-check.yml@main
+
+name: V4 Pro PR Quality Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install v4-pro
+        run: |
+          pip install --upgrade pip
+          pip install git+https://github.com/yn400/v4-pro.git
+
+      - name: Run security audit on changed files
+        run: |
+          # Get changed source files
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' '*.js' '*.ts' '*.tsx' '*.go' '*.rs' '*.java' | head -50)
+          if [ -z "$CHANGED" ]; then
+            echo "No source files changed in this PR."
+            exit 0
+          fi
+
+          # Collect changed files into a temp directory
+          TMPDIR=$(mktemp -d)
+          for f in $CHANGED; do
+            mkdir -p "$TMPDIR/$(dirname $f)"
+            cp "$f" "$TMPDIR/$f"
+          done
+
+          # Run v4-pro audit and save JSON
+          v4-pro audit --code "$TMPDIR" --format json > audit-report.json 2>/dev/null
+
+          # Convert to GitHub annotations
+          python -m v4_pro.ci_check audit-report.json

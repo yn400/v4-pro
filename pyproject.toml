@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "v4-pro"
+version = "0.1.0"
+description = "AI Code Quality Gate — 自动检测 AI 代码的 Bug/安全/架构问题"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "yn400"}]
+keywords = ["vibe-coding", "ai", "code-quality", "pipeline", "llm", "static-analysis", "security-audit", "ai-coding"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "click>=8.1,<9.0",
+    "rich>=13.0,<14.0",
+    "pydantic>=2.0,<3.0",
+    "pydantic-settings>=2.0,<3.0",
+    "openai>=1.0,<2.0",
+    "httpx>=0.25,<1.0",
+    "jinja2>=3.1,<4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/yn400/v4-pro"
+Repository = "https://github.com/yn400/v4-pro"
+"Bug Tracker" = "https://github.com/yn400/v4-pro/issues"
+
+[project.scripts]
+v4-pro = "v4_pro.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["v4_pro*"]
+
+[tool.setuptools.package-data]
+"v4_pro" = ["py.typed"]
+
+# prompts/ 目录在项目根目录，用户从项目根运行时自动找到
+# 若要作为 pip 包分发，需将 prompts/ 移入 v4_pro/ 并更新 engine.py 中的路径
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = ["-v", "--tb=short"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long（由 line-length 控制）
+    "B008",  # do not perform function calls in default arguments
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["v4_pro"]

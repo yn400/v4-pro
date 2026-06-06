@@ -1,0 +1,15 @@
+{
+  "preset": "python-package",
+  "description": "Python 库项目 / Python Library Package",
+  "tech_stack": {
+    "language": ["Python 3.10+"],
+    "build": ["setuptools", "pip"],
+    "test": ["pytest"],
+    "lint": ["ruff"]
+  },
+  "verify": {
+    "static_analysis": true,
+    "security_scan": true,
+    "arch_compliance": false
+  }
+}
