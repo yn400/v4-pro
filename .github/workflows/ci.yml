@@ -71,14 +71,30 @@ jobs:
           fi
           echo "gate correctly blocked the AI-slop demo"
 
-      - name: Semgrep engine actually produced findings (not silently skipped)
+      - name: Semgrep engine diagnostics + assertions
         run: |
-          v4-pro verify --code ./examples/ --semgrep --format json > gate.json
+          semgrep --version
+          echo "--- validate bundled rules ---"
+          semgrep scan --config v4_pro/semgrep_rules --validate || echo "::warning::rule validation reported issues (see above)"
+          echo "--- raw semgrep on examples ---"
+          semgrep scan --config v4_pro/semgrep_rules --json --metrics=off examples/ > raw.json || echo "::warning::semgrep exited nonzero"
           python -c "
-          import json, sys
+          import json
+          d = json.load(open('raw.json'))
+          print('semgrep results:', len(d.get('results', [])))
+          print('semgrep errors:', json.dumps(d.get('errors', []))[:1000])
+          "
+          echo "--- through v4-pro gate ---"
+          v4-pro verify --code ./examples/ --semgrep --format json > gate.json || true
+          python -c "
+          import json
           r = json.load(open('gate.json', encoding='utf-8'))
-          assert 'semgrep' in r['checks'], 'semgrep check missing — engine did not run'
-          n = len(r['checks']['semgrep']['issues'])
-          assert n > 0, 'semgrep produced no findings on AI-slop demo'
-          print(f'semgrep findings on demo: {n}')
+          sg = r['checks'].get('semgrep')
+          assert sg is not None, f'semgrep check missing; have {list(r[chr(99)+chr(104)+chr(101)+chr(99)+chr(107)+chr(115)])}'
+          print('engine notes:', sg['summary'].get('notes'))
+          n = len(sg['issues'])
+          print('gate semgrep findings:', n)
+          for i in sg['issues']:
+              print('  -', i['rule_id'], i['file'], i['line'])
+          assert n > 0, 'semgrep produced no findings - see diagnostics above'
           "
