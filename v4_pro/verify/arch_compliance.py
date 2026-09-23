@@ -262,6 +262,6 @@ class ArchComplianceChecker:
             for i, line in enumerate(filepath.read_text(encoding="utf-8").split("\n"), 1):
                 if module_name in line and ("import" in line or "from" in line):
                     return i
-        except Exception:
+        except Exception:  # v4pro:ignore=SMELL/except-swallow 行号推断失败返回 0，不影响合规判定
             pass
         return 0

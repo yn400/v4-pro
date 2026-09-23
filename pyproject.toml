@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "v4-pro"
-version = "0.1.0"
+version = "2.0.0"
 description = "AI Code Quality Gate — 自动检测 AI 代码的 Bug/安全/架构问题"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -63,6 +63,7 @@ addopts = ["-v", "--tb=short"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+extend-exclude = ["examples"]
 
 [tool.ruff.lint]
 select = [

@@ -1,6 +1,44 @@
 # Changelog
 
+## [2.0.0] - 2026-09-23
+
+### Added — 幻觉依赖检测（核心新能力）
+- 新模块 `v4_pro/phantom.py`：检测 AI 编造的不存在依赖包（slopsquatting 供应链攻击防线）
+- Python AST 提取 import / JS·TS 提取 import+require，四步判定：
+  标准库 → 本地模块 → 已声明/已安装依赖 → 注册表查证（PyPI / npm registry）
+- 注册表查证带本地缓存（`.v4pro_cache.json`，存在 30 天/缺失 7 天 TTL），离线模式降级为 P3 永不阻断
+- `phantom.allowlist` 白名单支持内部包名
+
+### Added — AI 代码异味检测
+- 新模块 `v4_pro/smells.py`：检测 LLM 生成代码的典型失败模式（传统 linter 不覆盖）
+- `SMELL/except-swallow`：except Exception/裸 except 静默吞异常（窄类型 pass 属惯用法，不误报）
+- `SMELL/stub-implementation`：桩函数（pass/.../NotImplementedError/纯文档字符串），抽象方法豁免
+- `SMELL/duplicate-function`：同名函数重复定义（AI 改写忘删旧版）
+- `SMELL/placeholder-secret` / `SMELL/placeholder-value`：占位符密钥与假值
+- `SMELL/overbroad-except`、`SMELL/todo-hotspot`、`SMELL/js-empty-catch`
+
+### Added — 门禁工程化
+- `--diff <ref>`：只检查相对 git 基线变更的行（PR 门禁不再被存量问题淹没）
+- `--baseline` / `--save-baseline`：基线棘轮，存量问题不阻断、新增问题必拦
+- `--fail-on P0|P1|P2|P3`：可配置阻断阈值；退出码规范化（0 通过 / 1 未过 / 2 工具错误）
+- `--format sarif`：SARIF 2.1.0 输出，可直接上传 GitHub code scanning
+- `.v4pro.json` 项目配置：exclude 路径 / disable_rules / 阈值 / 幻觉检测参数；`v4-pro init` 自动生成
+- 行内抑制注释：`# v4pro:ignore` 与 `# v4pro:ignore=RULE_ID`
+- 所有规则分配稳定 rule_id（SEC/*、SA/*、SMELL/*、PHANTOM/*）
+
+### Fixed — 误报治理（门禁可信的前提）
+- Python 注释/文档字符串经 tokenize 精确掩码后再匹配（旧版逐行猜测漏掉多行注释）
+- 正则/规则定义行（`re.compile`、`: r"..."`）识别为数据而非代码，不再自指误报
+- 审计 v4-pro 自身：14 个误报（risk 51）→ 0 P0 / 0 P1，`verify` 自门禁通过（exit 0）
+- subprocess 仅在 shell=True 或拼接命令时报 P1，参数列表形式降级
+- innerHTML 清空赋值豁免、降为 P1；测试文件豁免 random/占位符/桩函数类规则
+- audit 与 verify 的安全检测统一为同一引擎，消除两套规则漂移
+
+### Tests
+- 测试 64 → 114 个（新增 gate/smells/phantom 全套单元测试，含真实 git 仓库集成测试）
+
 ## [0.1.0] - 2026-06-09
+
 
 ### Added
 - Initial release of V4 Pro — AI Code Quality Gate

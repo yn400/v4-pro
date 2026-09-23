@@ -2,250 +2,233 @@
 
 # 🛡️ V4 Pro
 
-**AI 编程质量门禁 · AI Code Quality Gate**
+**AI 代码质量门禁 · The Quality Gate for AI-Generated Code**
 
-*把 AI 写的代码从「能跑就行」升级到「可直接上线」*
-
-*Upgrade AI-generated code from "it works" to "production-ready"*
+*拦截 AI 幻觉依赖、吞异常、桩函数 —— 在它们上线之前*
+*Catch hallucinated dependencies, swallowed exceptions, and stub code — before they ship*
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)]()
 [![License](https://img.shields.io/badge/License-MIT-green)]()
 [![CI](https://github.com/yn400/v4-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/yn400/v4-pro/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Tests-56%2F56-passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-114-passing-brightgreen)]()
 [![Release](https://img.shields.io/github/v/release/yn400/v4-pro)](https://github.com/yn400/v4-pro/releases)
-
----
 
 </div>
 
-## 📋 简介 · Overview
-
-**中文**：V4 Pro 是一个 AI 编程质量门禁工具。当你用 AI（Claude、GPT、DeepSeek 等）生成代码后，V4 Pro 会自动对你的代码进行**静态分析、安全扫描、架构合规检查**，把 AI 代码中隐藏的 bug、安全漏洞、架构问题揪出来。支持 5 步全流程（研究→定义→设计→生成→验证），也支持当成独立质量门禁对已有代码使用。
-
-**English**: V4 Pro is an AI Code Quality Gate. After AI generates your code, V4 Pro automatically runs **static analysis, security scanning, and architecture compliance checks** to catch bugs, vulnerabilities, and design issues before they ship. Use it as a full 5-step pipeline or as a standalone quality gate for any codebase.
-
 ---
 
-## 🎯 核心亮点 · Key Features
+## 为什么需要它 · Why
 
-| 中文 | English |
-|------|---------|
-| 🛡️ **质量门禁** — 一键检测 AI 代码的常见问题 | **Quality Gate** — One-click check for AI code issues |
-| 🔐 **安全审计** — 覆盖 OWASP Top 10 的 6+ 类漏洞 | **Security Audit** — Covers 6+ OWASP Top 10 categories |
-| 🤖 **PR 自动检查** — PR 提交自动跑质量门禁 | **PR Check** — Auto quality gate on every PR |
-| 🐳 **Docker 版** — 一行命令即用 | **Docker** — `docker run ghcr.io/yn400/v4-pro` |
-| 🧊 **防腐蚀** — 冻结架构规范，后续生成不跑偏 | **Anti-Decay** — Freeze architecture specs as ratchet |
-| 📦 **预设模板** — 4 种项目类型开箱即用 | **Presets** — 4 project templates ready |
-| 🔄 **多 LLM 支持** — OpenAI / 智谱 / 通义 / Claude | **Multi-LLM** — OpenAI, Zhipu, Qwen, Claude |
-| 📊 **丰富报告** — Rich 终端渲染 + JSON 导出 | **Rich Reports** — Beautiful terminal output + JSON export |
+AI 写代码又快又多，但它会：
 
----
+- **编造依赖包** — `import fastcsvparser` 这种 PyPI 上根本不存在的包。攻击者专门抢注这些名字投放恶意代码，这类攻击被称为 [slopsquatting](https://labs.cloudsecurityalliance.org/research/csa-research-note-slopsquatting-ai-supply-chain-20260419-csa)，`pip install` 的瞬间就中招
+- **静默吞异常** — `except Exception: pass`，出错时一片寂静
+- **生成桩函数** — 看起来实现了、函数体其实是 `pass` 或 `raise NotImplementedError`
+- **留下占位符** — `YOUR_API_KEY`、`changeme`、`https://example.com/api`
+- **改写时忘删旧版** — 同一个函数定义两次
 
-## 🖥️ 演示 · Demo
+传统 linter（Ruff/Semgrep/ESLint）盯的是代码风格和已知漏洞模式，**以上这些恰好都在盲区里**。V4 Pro 专补这一层。
 
-![V4 Pro CLI Demo](assets/cli_demo.svg)
+## 核心能力 · What it catches
 
----
+| 能力 | 说明 | 无需联网 |
+|------|------|:---:|
+| 🚫 **幻觉依赖检测** | import 了 PyPI/npm 上不存在的包 → P0 阻断（注册表查证+本地缓存，离线降级不误伤） | 离线可用* |
+| 🧠 **AI 异味检测** | 吞异常 / 桩函数 / 重复定义 / 占位符密钥 / TODO 热点 | ✅ |
+| 🔐 **安全扫描** | SQL 注入 / 命令注入 / 不安全反序列化 / 硬编码密钥 / XSS / 弱哈希（AST+精确正则） | ✅ |
+| 🧊 **架构合规** | 冻结分层约束，检查 import 依赖方向 | ✅ |
+| 📏 **静态分析** | pylint/eslint（装了就用）+ 内置降级规则 | ✅ |
+
+<sub>*离线模式下幻觉检测降级为 P3 提示，绝不阻断门禁</sub>
 
 ## 🚀 快速开始 · Quick Start
 
-### 🐳 方案 A：Docker（最快，无需安装 Python）
-
 ```bash
-# 对当前目录下的代码跑质量门禁
+# 方式 A: uvx / pipx（推荐，零污染）
+uvx v4-pro verify --code ./src/
+pipx install v4-pro && v4-pro verify --code ./src/
+
+# 方式 B: pip
+pip install v4-pro
+
+# 方式 C: Docker
 docker run --rm -v $(pwd):/code ghcr.io/yn400/v4-pro verify --code /code
 ```
 
-### 📦 方案 B：pip 安装
+**不需要任何 API Key** — `verify` 是纯本地检查，开箱即用。
+（API Key 只在全流程 `run/research/design/generate` 时才需要。）
 
-```bash
-# 需要 Python ≥ 3.10
-pip install v4-pro
+## 真实效果 · Verified Output
 
-# 使用
-v4-pro --help
+以下是对 [examples/ai_slop_demo.py](examples/ai_slop_demo.py)（一段故意埋了 8 类典型问题的 "AI 生成代码"）的真实运行结果：
+
+```text
+┌─────────┬────────┬─────────┬──────────┬────────┬────┐
+│ 检查项  │ 总问题 │ P0      │ P1       │ P2     │ P3 │
+├─────────┼────────┼─────────┼──────────┼────────┼────┤
+│ 安全扫描    │   6    │     3     │      1       │     2      │ 0  │
+│ AI 代码异味 │   6    │     0     │      5       │     1      │ 0  │
+│ 幻觉依赖    │   1    │     1     │      0       │      0      │ 0  │
+├─────────┼────────┼─────────┼──────────┼────────┼────┤
+│ 合计        │   13   │     4     │      6       │     3      │ 0  │
+└─────────┴────────┴─────────┴──────────┴────────┴────┘
+
+问题详情:
+  ● [安全] 使用了不安全的反序列化 — ai_slop_demo.py:42
+  ● [安全] 潜在的 SQL 注入（f-string 拼接 SQL） — ai_slop_demo.py:60
+  ● [安全] 硬编码密钥/密码（字符串字面量赋值） — ai_slop_demo.py:16
+  ● [幻觉依赖] 幻觉依赖: fastcsvparser 在 PyPI 上不存在
+     ——AI 编造的包名，攻击者可能已抢注（slopsquatting）— ai_slop_demo.py:14
+
+✗ 质量门禁未通过！ (exit code 1)
 ```
 
-### 🔧 方案 C：源码安装
+13 个报告 = 演示文件里埋的 13 处真问题，**零误报**。埋了什么就报什么，没埋的不报。
+
+### 自门禁 · It gates itself
+
+> 质量门禁工具最大的耻辱是自己的代码过不了自己的门。V4 Pro 在 CI 里运行
+> `v4-pro verify --code ./v4_pro/` —— 0 个 P0/P1，通过。
+> `v4-pro audit` 自审：**0 发现，风险分 0**。（1.x 版本自审曾报 14 个误报、风险分 51——全部来自规则定义字符串的自指误报，2.0 已根治。）
+
+## 门禁工程化 · Built for CI
+
+### PR 门禁：只看新增问题
+
+存量代码一堆问题不拦新 PR？用基线棘轮或 diff 模式：
 
 ```bash
-git clone https://github.com/yn400/v4-pro.git
-cd v4-pro
-pip install -e ".[dev]"
+# 一次性保存当前状态为基线（允许此时失败退出）
+v4-pro verify --code ./src/ --save-baseline gate.baseline.json
+
+# 之后每次 PR：存量问题不阻断，新增问题必拦
+v4-pro verify --code ./src/ --baseline gate.baseline.json
+
+# 或者只检查相对 main 变更的行
+v4-pro verify --code ./src/ --diff main
+
+# 提高门槛：P1 也阻断
+v4-pro verify --code ./src/ --fail-on P1
 ```
 
-### ⚙️ 配置
-
-```bash
-cp .env.example .env
-# 编辑 .env，填入你的 API Key（仅 run/research/design/generate 需要）
-```
-
----
-
-## 💡 使用方式 · Usage
-
-### 方式一：一键全流程（推荐）
-
-```bash
-v4-pro run "做一个待办事项 App"
-# 一句话：市场研究 → 需求定义 → 架构设计 → 代码生成 → 质量门禁
-```
-
-### 方式二：分步执行
-
-```bash
-v4-pro research "做一个二手交易平台"    # Step 1: 市场研究
-v4-pro define                           # Step 2: 需求定义
-v4-pro design                           # Step 3: 架构设计
-v4-pro generate                         # Step 4: 代码生成
-v4-pro verify                           # Step 5: 质量门禁
-```
-
-### 方式三：对已有代码做质量检查
-
-```bash
-# 质量门禁（无需 API Key）
-v4-pro verify --code ./my-project/src/
-
-# 安全审计（OWASP Top 10）
-v4-pro audit --code ./my-project/src/
-
-# JSON 格式导出
-v4-pro audit --code ./src/ --format json --output audit-report.json
-```
-
----
-
-## 🤖 PR 质量门禁 · PR Quality Gate
-
-将 V4 Pro 集成到你的 GitHub PR 流程中，每次提交自动检查代码质量：
+### GitHub Actions
 
 ```yaml
-# .github/workflows/v4-pro-gate.yml
+# .github/workflows/gate.yml
 name: V4 Pro Quality Gate
 on: [pull_request]
 jobs:
-  quality-gate:
-    uses: yn400/v4-pro/.github/workflows/pr-check.yml@main
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}   # --diff 需要完整历史
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install v4-pro
+      - run: v4-pro verify --code ./src/ --diff origin/${{ github.base_ref }}
 ```
 
-效果：PR 提交时自动跑 `v4-pro verify`，有 P0 问题直接阻断合并。
-
----
-
-## 📦 预设模板 · Presets
-
-开箱即用的项目类型预设：
-
-| 模板 | 文件 | 适合 |
-|------|------|------|
-| 🌐 Web 应用 | `presets/web-app.json` | React + FastAPI + PostgreSQL |
-| 📦 Python 包 | `presets/python-package.json` | 库项目 |
-| 🔧 嵌入式/IoT | `presets/embedded-iot.json` | ESP32 / STM32 / Arduino |
-| 📱 移动应用 | `presets/mobile-app.json` | React Native / Flutter |
-
-用法：
+### SARIF 上传 GitHub Code Scanning
 
 ```bash
-v4-pro run "做一个 IoT 传感器平台" --preset presets/embedded-iot.json
+v4-pro verify --code ./src/ --format sarif --output results.sarif
+```
+配合 [github/codeql-action/upload-sarif](https://github.com/github/codeql-action) 即可在 PR 页面内联显示问题。
+
+### 按需调配置
+
+```bash
+v4-pro init   # 生成 .v4pro.json
 ```
 
----
-
-## 📊 命令一览 · Command Reference
-
-| 命令 · Command | 说明 · Description |
-|----------------|-------------------|
-| `v4-pro run <需求>` | 一键全流程（推荐） |
-| `v4-pro research <需求>` | 市场研究与竞品分析 |
-| `v4-pro define` | 需求定义与功能规划 |
-| `v4-pro design` | 架构设计与技术选型 |
-| `v4-pro generate` | AI 代码生成 |
-| `v4-pro verify` | **质量门禁**（静态分析+安全+架构） |
-| `v4-pro audit` | **安全审计**（OWASP Top 10） |
-| `v4-pro freeze` | 冻结架构规范，防止代码腐化 |
-| `v4-pro init` | 初始化项目脚手架 |
-| `v4-pro --help` | 显示帮助 |
-
----
-
-## 🔬 真实审计输出 · Real Audit Example
-
-V4 Pro 自带安全审计功能。以下是对 **V4 Pro 自身代码**的安全审计结果（v4_pro 审计 v4_pro）：
-
-```
-$ v4-pro audit --code ./v4_pro/ --format json
-
-扫描 21 个文件:
-  Critical:  5  — 不安全反序列化检测规则
-  High:      6  — 路径遍历、HTTP明文
-  Medium:    8  — 日志泄露、弱随机数
-  Risk Score: 96/100
-
-✓ V4 Pro 会如实报告自身的所有问题——包括审计器本身的误报模式。
-  (临界问题全部来自 scanner.py 中的规则匹配模式，而非实际漏洞)
+```jsonc
+// .v4pro.json
+{
+  "fail_on": "P0",                       // 阻断阈值
+  "exclude": ["docs/**", "*.md"],        // 路径排除（glob）
+  "disable_rules": ["SA/print-instead-of-logging"],
+  "test_paths": ["tests", "test"],       // 测试目录自动享受宽松规则
+  "phantom": {
+    "allowlist": ["my-internal-pkg"],    // 内部包白名单
+    "offline": false,
+    "timeout": 5
+  }
+}
 ```
 
----
+误报时不需要关掉整条规则——在代码行尾加注释即可：
 
-## 🏗️ 项目结构 · Project Structure
+```python
+result = legacy_call()  # v4pro:ignore=SMELL/overbroad-except 历史接口，下版本重构
+```
+
+## 与同类工具的关系 · Positioning
+
+| 工具 | 擅长 | 与 V4 Pro 的关系 |
+|------|------|------|
+| Ruff / ESLint | 代码风格、语言级错误 | 互补——风格问题它们更专业 |
+| Semgrep / Bandit | 已知漏洞模式 | 互补——但都不查幻觉依赖与 AI 异味 |
+| CodeRabbit / pr-agent | AI 生成 PR 评审建议 | 互补——它们给建议，V4 Pro 给硬门禁 |
+| Snyk / Mend | 依赖漏洞数据库 | 互补——它们查"已安装的包有没有洞"，V4 Pro 查"这包到底存不存在" |
+
+**V4 Pro 独有**：幻觉依赖检测（slopsquatting 防线）+ AI 生成失败模式检测 + 零依赖本地运行 + 基线/diff 门禁。
+
+## 全流程模式（可选）· Full Pipeline
+
+除了独立门禁，V4 Pro 也提供结构化生成流水线（需配置 LLM API Key）：
+
+```bash
+v4-pro run "做一个待办事项 App"
+# 研究 → 需求 → 设计 → 生成 → 质量门禁
+# 配套: v4-pro freeze 冻结架构规范，防止后续生成腐化
+```
+
+| 命令 | 说明 | 需要 Key |
+|------|------|:---:|
+| `v4-pro verify` | **质量门禁**（五项检查） | ❌ |
+| `v4-pro audit` | 独立安全审计 | ❌ |
+| `v4-pro init` | 初始化项目 + 门禁配置 | ❌ |
+| `v4-pro run <需求>` | 一键全流程 | ✅ |
+| `v4-pro research/define/design/generate` | 分步执行 | ✅ |
+| `v4-pro freeze` | 冻结架构规范 | ❌ |
+
+## 测试与质量 · Quality
+
+```bash
+python -m pytest -v        # 114 个测试全部通过
+```
+
+- 覆盖：检测规则正确性、误报抑制、抑制注释、基线/diff 过滤、SARIF 结构、真实 git 仓库集成
+- CI 矩阵（ubuntu/windows × py3.10-3.12）+ **自门禁 job**（自己的代码必须过自己的门 + AI-slop 演示必须被拦下）
+
+## 项目结构 · Structure
 
 ```
 v4-pro/
-├── v4_pro/                     # 核心代码
+├── v4_pro/
 │   ├── cli.py                  # CLI 入口
 │   ├── engine.py               # 工作流引擎
-│   ├── config.py               # 配置管理
-│   ├── engine.py               # 工作流引擎
+│   ├── gate.py                 # 门禁基础设施（掩码/抑制/基线/diff/SARIF）
+│   ├── phantom.py              # 幻觉依赖检测（slopsquatting 防线）
+│   ├── smells.py               # AI 代码异味检测
+│   ├── verify/                 # 安全扫描 / 静态分析 / 架构合规
+│   ├── audit/                  # 独立审计（与 verify 同引擎）
+│   ├── freeze/                 # 冻结规范管理
 │   ├── llm/                    # LLM 适配器层
-│   ├── verify/                 # 质量门禁
-│   ├── audit/                  # 安全审计
-│   └── freeze/                 # 冻结规范管理
-├── presets/                    # 项目类型预设
-├── tests/                      # 56 个单元测试
-├── Dockerfile                  # 容器化部署
-├── CHANGELOG.md
-├── pyproject.toml
-├── LICENSE
-└── README.md
+│   └── config.py               # 配置管理
+├── examples/                   # AI-slop 演示文件（可自查复现）
+├── presets/                    # 4 种项目类型预设
+└── tests/                      # 114 个测试
 ```
 
----
+## 支持 · Supported
 
-## 🧪 测试 · Tests
+- **语言**: Python（AST 深度分析）、JavaScript/TypeScript（精确正则）
+- **LLM Provider**（仅全流程需要）: OpenAI 兼容 / 智谱 GLM / 通义 Qwen / Claude（即将）
+- **平台**: Linux / macOS / Windows（Windows 终端已做 UTF-8 修复）
 
-```bash
-# 全部 56 个测试
-python -m pytest
-
-# 带覆盖率
-python -m pytest --cov=v4_pro --cov-report=term
-
-# 仅安全扫描测试
-python -m pytest tests/test_security_scan.py -v
-```
-
----
-
-## 🔧 支持的 LLM
-
-| Provider | 配置值 | 说明 |
-|----------|--------|------|
-| OpenAI / 中转站 | `openai` | 兼容任意 OpenAI 格式 API |
-| 智谱 GLM | `zhipu` | 国内直连，无需代理 |
-| 通义千问 Qwen | `tongyi` | 阿里云，国内直连 |
-| Claude | `anthropic` | 即将支持 |
-
----
-
-## 📄 CHANGELOG
-
-[CHANGELOG.md](CHANGELOG.md) — 版本历史与更新记录。
-
----
-
-## 📄 协议 · License
+## 协议 · License
 
 [MIT](LICENSE) — 自由使用、修改、商用。
 
@@ -253,10 +236,8 @@ python -m pytest tests/test_security_scan.py -v
 
 <div align="center">
 
-**如果 V4 Pro 帮到了你，点个 ⭐ 吧！**
+**如果 V4 Pro 拦下过你的问题，点个 ⭐ 吧！**
 
-*If V4 Pro helps you, give it a ⭐!*
-
-[GitHub](https://github.com/yn400/v4-pro) · [Issues](https://github.com/yn400/v4-pro/issues)
+[GitHub](https://github.com/yn400/v4-pro) · [Issues](https://github.com/yn400/v4-pro/issues) · [CHANGELOG](CHANGELOG.md)
 
 </div>

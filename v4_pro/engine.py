@@ -334,20 +334,33 @@ class WorkflowEngine:
         code_path: str = "./generated/",
         design_file: str = "design.json",
         force: bool = False,
+        fail_on: str | None = None,
+        diff_base: str | None = None,
+        baseline_path: str | None = None,
+        save_baseline: str | None = None,
+        phantom_offline: bool = False,
     ) -> dict[str, Any]:
         """
         Step 5 — 质量门禁。
 
-        对生成的代码执行三项检查：静态分析、安全扫描、架构合规。
+        五项检查: 静态分析、安全扫描、AI 代码异味、幻觉依赖、架构合规。
 
         Args:
             code_path: 代码目录路径
             design_file: 设计文档（用于架构合规检查）
-            force: 是否强制通过（即使有 P0 问题）
+            force: 是否强制通过（即使有问题）
+            fail_on: 门禁阈值（P0/P1/P2/P3），None 时读 .v4pro.json，默认 P0
+            diff_base: git 基线引用（如 main）— 只检查相对该引用变更的行
+            baseline_path: 基线报告 — 存量问题标记为 baseline，不阻断
+            save_baseline: 把本次结果保存为基线文件
+            phantom_offline: 幻觉依赖检测离线模式（跳过注册表查询）
 
         Returns:
             验证报告 JSON
         """
+        from v4_pro import gate as gate_infra
+        from v4_pro.phantom import PhantomDependencyChecker
+        from v4_pro.smells import AiSmellDetector
         from v4_pro.verify.arch_compliance import ArchComplianceChecker
         from v4_pro.verify.security_scan import SecurityScanner
         from v4_pro.verify.static_analysis import StaticAnalyzer
@@ -356,6 +369,9 @@ class WorkflowEngine:
         logger.info("Step 5/5: VERIFY — 质量门禁")
 
         code_dir = self._resolve_path(code_path)
+        gate_cfg = gate_infra.load_gate_config(code_dir if code_dir.is_dir() else Path.cwd())
+        fail_threshold = fail_on or gate_cfg.get("fail_on", "P0")
+        test_paths = gate_cfg.get("test_paths", [])
         # 设计文档可选 — 没有就跳过架构合规检查
         try:
             design_data = self._load_json(design_file)
@@ -371,40 +387,136 @@ class WorkflowEngine:
         }
 
         # 检查 1: 静态分析
-        logger.info("  [1/3] 静态分析...")
-        static = StaticAnalyzer().analyze(code_dir)
+        logger.info("  [1/5] 静态分析...")
+        static = StaticAnalyzer().analyze(code_dir, extra_test_paths=test_paths)
         report["checks"]["static_analysis"] = static
 
         # 检查 2: 安全扫描
-        logger.info("  [2/3] 安全扫描...")
-        security = SecurityScanner().scan(code_dir)
+        logger.info("  [2/5] 安全扫描...")
+        security = SecurityScanner().scan(code_dir, extra_test_paths=test_paths)
         report["checks"]["security_scan"] = security
 
-        # 检查 3: 架构合规
-        logger.info("  [3/3] 架构合规检查...")
+        # 检查 3: AI 代码异味
+        logger.info("  [3/5] AI 代码异味...")
+        smells = AiSmellDetector().scan(code_dir, extra_test_paths=test_paths)
+        report["checks"]["ai_smell"] = smells
+
+        # 检查 4: 幻觉依赖
+        logger.info("  [4/5] 幻觉依赖检测...")
+        phantom_cfg = gate_cfg.get("phantom", {})
+        phantom = PhantomDependencyChecker(
+            offline=phantom_offline or phantom_cfg.get("offline", False),
+            allowlist=phantom_cfg.get("allowlist", []),
+            timeout=phantom_cfg.get("timeout", 5),
+            ttl_exists=phantom_cfg.get("cache_ttl_exists", 30),
+            ttl_missing=phantom_cfg.get("cache_ttl_missing", 7),
+        ).scan(code_dir)
+        report["checks"]["phantom_dependency"] = phantom
+
+        # 检查 5: 架构合规
+        logger.info("  [5/5] 架构合规检查...")
         arch = ArchComplianceChecker(design_data).check(code_dir)
         report["checks"]["arch_compliance"] = arch
 
-        # 汇总
+        # ── 汇总与门禁判定 ──
         all_issues = []
         for _check_name, check_result in report["checks"].items():
-            all_issues.extend(check_result.get("issues", []))
+            for issue in check_result.get("issues", []):
+                issue["_check"] = _check_name
+                all_issues.append(issue)
 
-        p0_count = sum(1 for i in all_issues if i.get("severity") == "P0")
-        p1_count = sum(1 for i in all_issues if i.get("severity") == "P1")
-        p2_count = sum(1 for i in all_issues if i.get("severity") == "P2")
+        # 排除路径
+        exclude_patterns = gate_cfg.get("exclude", [])
+        if exclude_patterns:
+            all_issues = [
+                i for i in all_issues
+                if not gate_infra.path_excluded(Path(i["file"]), code_dir, exclude_patterns)
+            ]
 
-        blocked = p0_count > 0 and not force
+        # 禁用规则
+        disabled = set(gate_cfg.get("disable_rules", []))
+        if disabled:
+            all_issues = [i for i in all_issues if i.get("rule_id") not in disabled]
+
+        # 行内抑制注释
+        supp_cache: dict[str, dict[int, set[str]]] = {}
+        kept_after_suppression = []
+        for issue in all_issues:
+            f = issue.get("file", "")
+            if f not in supp_cache:
+                supp_map: dict[int, set[str]] = {}
+                try:
+                    src = Path(f).read_text(encoding="utf-8")
+                    # 抑制标记在注释里 — 必须用原始源码解析（掩码会抹掉标记）
+                    supp_map = gate_infra.build_suppression_map(src)
+                except (OSError, UnicodeDecodeError):
+                    pass
+                supp_cache[f] = supp_map
+            if not gate_infra.is_suppressed(issue, supp_cache[f]):
+                kept_after_suppression.append(issue)
+        all_issues = kept_after_suppression
+
+        # diff 模式 — 只看变更行
+        diff_applied = False
+        if diff_base:
+            changed = gate_infra.changed_lines(code_dir, diff_base)
+            if changed:
+                before = len(all_issues)
+                all_issues = gate_infra.filter_by_diff(all_issues, changed, code_dir)
+                diff_applied = True
+                logger.info("diff 模式: %d → %d（只统计变更行）", before, len(all_issues))
+
+        # 基线模式 — 存量问题不阻断
+        if baseline_path:
+            baseline = gate_infra.load_baseline(Path(baseline_path))
+            gate_infra.mark_baseline(all_issues, baseline)
+        else:
+            for issue in all_issues:
+                issue["baseline"] = False
+
+        # 回填到各 check（保持 schema 一致）
+        kept_keys = {(i["file"], i["line"], i.get("rule_id", "")) for i in all_issues}
+        for check in report["checks"].values():
+            check["issues"] = [
+                i for i in check.get("issues", [])
+                if (i.get("file", ""), int(i.get("line", 0) or 0), i.get("rule_id", "")) in kept_keys
+            ]
+
+        counts = {s: 0 for s in ("P0", "P1", "P2", "P3")}
+        for issue in all_issues:
+            counts[issue.get("severity", "P3")] = counts.get(issue.get("severity", "P3"), 0) + 1
+
+        active = [i for i in all_issues if not i.get("baseline")]
+        threshold_hits = [
+            i for i in active
+            if gate_infra.severity_at_or_above(i.get("severity", "P3"), fail_threshold)
+        ]
+        blocked = bool(threshold_hits) and not force
 
         report["summary"] = {
             "total_issues": len(all_issues),
-            "p0_blockers": p0_count,
-            "p1_warnings": p1_count,
-            "p2_suggestions": p2_count,
+            "p0_blockers": counts["P0"],
+            "p1_warnings": counts["P1"],
+            "p2_suggestions": counts["P2"],
+            "p3_info": counts["P3"],
+            "baseline_count": len(all_issues) - len(active),
+            "fail_on": fail_threshold,
+            "threshold_hits": len(threshold_hits),
+            "diff_mode": diff_applied,
+            "phantom_packages": sum(
+                1 for i in active if str(i.get("rule_id", "")).startswith("PHANTOM/")
+                and i.get("severity") == "P0"
+            ),
             "passed": not blocked,
             "blocked": blocked,
-            "force_bypass": force and p0_count > 0,
+            "force_bypass": force and bool(threshold_hits),
         }
+
+        if save_baseline:
+            Path(save_baseline).write_text(
+                json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            logger.info("基线已保存: %s", save_baseline)
 
         self._save_step_output("verify.json", report)
 
@@ -418,8 +530,9 @@ class WorkflowEngine:
 
         if blocked:
             logger.warning(
-                "质量门禁未通过！%d 个 P0 问题阻断。使用 --force 可强制通过。",
-                p0_count,
+                "质量门禁未通过！%d 个问题达到阈值 %s。使用 --force 可强制通过。",
+                len(threshold_hits),
+                fail_threshold,
             )
         else:
             logger.info("质量门禁通过 ✓")

@@ -41,3 +41,27 @@ jobs:
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+
+  self-gate:
+    # 自门禁: v4-pro 检查 v4-pro 自己 — 质量门禁工具必须先过自己这关
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Our own source must PASS the gate
+        run: v4-pro verify --code ./v4_pro/
+
+      - name: AI-slop demo must FAIL the gate (detectors alive)
+        run: |
+          if v4-pro verify --code ./examples/; then
+            echo "::error::examples/ should have been blocked"; exit 1
+          fi
+          echo "gate correctly blocked the AI-slop demo"

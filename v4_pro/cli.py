@@ -29,6 +29,7 @@ from rich.text import Text
 from v4_pro import __version__
 from v4_pro.config import get_settings, reload_settings
 from v4_pro.engine import WorkflowEngine
+from v4_pro.gate import SEVERITY_ORDER
 from v4_pro.scaffold import init_project
 
 # ── Rich Console ────────────────────────────────────────────
@@ -46,7 +47,7 @@ if sys.platform == "win32":
         if kernel32.GetConsoleMode(h, ctypes.byref(mode)):
             # ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
             kernel32.SetConsoleMode(h, mode.value | 0x0004)
-    except Exception:
+    except Exception:  # v4pro:ignore=SMELL/except-swallow Windows 旧终端修复，尽力而为不致命
         pass
 console = Console()
 
@@ -245,32 +246,83 @@ def generate(source_file: str, provider: str | None) -> None:
 @click.option(
     "--design", "-d", "design_file",
     default="design.json",
-    help="设计文档（用于架构合规检查）",
+    help="设计文档（用于架构合规检查，文件不存在时自动跳过）",
 )
 @click.option(
     "--force", "-f",
     is_flag=True,
-    help="强制通过（即使有 P0 问题）",
+    help="强制通过（即使有问题达到阈值）",
+)
+@click.option(
+    "--fail-on",
+    type=click.Choice(["P0", "P1", "P2", "P3"]),
+    default=None,
+    help="门禁阈值: 达到该严重度即阻断（默认 P0，可被 .v4pro.json 配置）",
+)
+@click.option(
+    "--diff",
+    "diff_base",
+    default=None,
+    help="git 基线引用（如 main）— 只检查相对该引用变更的行（PR 门禁推荐）",
+)
+@click.option(
+    "--baseline",
+    "baseline_path",
+    default=None,
+    type=click.Path(),
+    help="基线报告文件 — 存量问题不阻断，只拦新增问题（棘轮模式）",
+)
+@click.option(
+    "--save-baseline",
+    "save_baseline",
+    default=None,
+    type=click.Path(),
+    help="把本次检查结果保存为基线文件",
+)
+@click.option(
+    "--offline",
+    is_flag=True,
+    help="幻觉依赖检测跳过注册表联网查询",
 )
 @click.option(
     "--format", "-fmt", "output_format",
-    type=click.Choice(["rich", "json"]),
+    type=click.Choice(["rich", "json", "sarif"]),
     default="rich",
-    help="输出格式",
+    help="输出格式（sarif 兼容 GitHub code scanning）",
+)
+@click.option(
+    "--output", "-o",
+    default=None,
+    type=click.Path(),
+    help="输出报告到文件",
 )
 def verify(
     code: str,
     design_file: str,
     force: bool,
+    fail_on: str | None,
+    diff_base: str | None,
+    baseline_path: str | None,
+    save_baseline: str | None,
+    offline: bool,
     output_format: str,
+    output: str | None,
 ) -> None:
     """
-    Step 5: 质量门禁。
+    质量门禁。
 
-    对代码执行静态分析、安全扫描、架构合规三项检查。
+    五项检查: 静态分析、安全扫描、AI 代码异味、幻觉依赖、架构合规。
+
+    \\b
+    示例:
+        v4-pro verify --code ./src/                      # 全量检查
+        v4-pro verify --code ./src/ --diff main          # PR 门禁: 只查变更行
+        v4-pro verify --code ./src/ --baseline gate.json # 只拦新增问题
+        v4-pro verify --code ./src/ --fail-on P1         # P1 也阻断
+        v4-pro verify --code ./src/ --format sarif       # GitHub code scanning
     """
-    if output_format != "json":
-        _print_banner("[SHIELD]   Step 5/5 — 质量门禁")
+    if output_format == "rich":
+        _print_banner("[SHIELD]  质量门禁 · Quality Gate")
 
     try:
         engine = _get_engine()
@@ -278,36 +330,56 @@ def verify(
             code_path=code,
             design_file=design_file,
             force=force,
+            fail_on=fail_on,
+            diff_base=diff_base,
+            baseline_path=baseline_path,
+            save_baseline=save_baseline,
+            phantom_offline=offline,
         )
 
-        if output_format == "json":
-            # JSON 模式：纯 stdout 输出，不混入 Rich 标记或日志
-            print(json.dumps(report, ensure_ascii=False, indent=2))
+        if output_format == "sarif":
+            from v4_pro import __version__ as _version
+            from v4_pro import gate as gate_infra
+
+            sarif = gate_infra.to_sarif(report, tool_version=_version)
+            text = json.dumps(sarif, ensure_ascii=False, indent=2)
+        else:
+            text = json.dumps(report, ensure_ascii=False, indent=2)
+
+        if output:
+            Path(output).write_text(text, encoding="utf-8")
+            if output_format == "rich":
+                console.print(f"\n[green]✓[/] 报告已保存到 [bold]{output}[/]")
+        elif output_format in ("json", "sarif"):
+            print(text)
         else:
             _print_verify_report(report)
 
         summary = report.get("summary", {})
-        if output_format == "json":
-            # JSON 模式：exit code 反映结果，不额外输出
+        if output_format in ("json", "sarif"):
             if summary.get("blocked") and not force:
                 sys.exit(1)
             return
 
-        if summary.get("blocked"):
-            console.print(
-                f"\n[red]✗ 质量门禁未通过！[/] "
-                f"[bold red]{summary['p0_blockers']}[/] 个 P0 阻断问题。"
-            )
-            console.print("  使用 [bold]--force[/] 可强制通过。")
+        if output_format == "rich":
+            if summary.get("blocked"):
+                console.print(
+                    f"\n[red]✗ 质量门禁未通过！[/] "
+                    f"[bold red]{summary.get('threshold_hits', 0)}[/] 个问题达到阈值 "
+                    f"[bold]{summary.get('fail_on', 'P0')}[/]。"
+                )
+                console.print("  使用 [bold]--force[/] 可强制通过。")
+            elif summary.get("force_bypass"):
+                console.print("\n[yellow]⚠ 已强制通过（有问题被绕过）[/]")
+            else:
+                console.print("\n[green]✓ 质量门禁通过！[/]")
+
+        if summary.get("blocked") and not force:
             sys.exit(1)
-        elif summary.get("force_bypass"):
-            console.print("\n[yellow]⚠ 已强制通过（有 P0 问题被绕过）[/]")
-        else:
-            console.print("\n[green]✓ 质量门禁通过！[/]")
 
     except Exception as e:
         console.print(f"[red]✗ 验证失败: {e}[/]")
-        sys.exit(1)
+        sys.exit(2)
 
 
 # ── audit ───────────────────────────────────────────────────
@@ -420,6 +492,27 @@ def init(dir: str) -> None:
 
     try:
         root = init_project(dir)
+
+        # 写入门禁配置模板（若不存在）
+        gate_cfg_path = Path(dir) / ".v4pro.json"
+        gate_created = False
+        if not gate_cfg_path.exists():
+            gate_cfg_path.write_text(
+                json.dumps({
+                    "fail_on": "P0",
+                    "exclude": ["docs/**", "*.md"],
+                    "disable_rules": [],
+                    "test_paths": ["tests", "test"],
+                    "phantom": {
+                        "offline": False,
+                        "allowlist": [],
+                        "timeout": 5,
+                    },
+                }, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            gate_created = True
+
         console.print(f"[green]✓[/] 项目已初始化: [bold]{root}[/]")
 
         # 显示目录结构
@@ -428,13 +521,15 @@ def init(dir: str) -> None:
 ├── v4_workspace/
 │   └── generated/
 ├── prompts/
+├── .v4pro.json  (质量门禁配置{' — 新生成' if gate_created else ''})
 └── .env  (从 .env.example 复制并配置)
 """
         console.print(Panel(tree_str.strip(), title="项目结构", border_style="dim"))
 
         console.print("\n[yellow]下一步:[/]")
-        console.print("  1. 编辑 [bold].env[/] 填入 API Key")
-        console.print('  2. 运行 [bold]v4-pro research "你的需求"[/]')
+        console.print("  1. 编辑 [bold].env[/] 填入 API Key（仅 run/research/design/generate 需要）")
+        console.print("  2. 运行 [bold]v4-pro verify --code ./src/[/] 体验质量门禁（无需 API Key）")
+        console.print('  3. 运行 [bold]v4-pro research "你的需求"[/] 启动全流程')
 
     except Exception as e:
         console.print(f"[red]✗ 初始化失败: {e}[/]")
@@ -576,18 +671,22 @@ def _print_verify_report(report: dict) -> None:
     table.add_column("P0 [RED] ", justify="center", style="red")
     table.add_column("P1 [YELLOW] ", justify="center", style="yellow")
     table.add_column("P2 [BLUE] ", justify="center", style="dim")
+    table.add_column("P3", justify="center", style="dim")
 
     for check_name, check_result in report.get("checks", {}).items():
         issues = check_result.get("issues", [])
-        p0 = sum(1 for i in issues if i.get("severity") == "P0")
-        p1 = sum(1 for i in issues if i.get("severity") == "P1")
-        p2 = sum(1 for i in issues if i.get("severity") == "P2")
+        counts = {s: sum(1 for i in issues if i.get("severity") == s) for s in ("P0", "P1", "P2", "P3")}
         label_map = {
             "static_analysis": "静态分析",
             "security_scan": "安全扫描",
+            "ai_smell": "AI 代码异味",
+            "phantom_dependency": "幻觉依赖",
             "arch_compliance": "架构合规",
         }
-        table.add_row(label_map.get(check_name, check_name), str(len(issues)), str(p0), str(p1), str(p2))
+        table.add_row(
+            label_map.get(check_name, check_name), str(len(issues)),
+            str(counts["P0"]), str(counts["P1"]), str(counts["P2"]), str(counts["P3"]),
+        )
 
     table.add_section()
     table.add_row(
@@ -596,25 +695,48 @@ def _print_verify_report(report: dict) -> None:
         str(summary.get("p0_blockers", 0)),
         str(summary.get("p1_warnings", 0)),
         str(summary.get("p2_suggestions", 0)),
+        str(summary.get("p3_info", 0)),
     )
     console.print(table)
 
-    # P0 问题详情
+    # 模式提示
+    modes = []
+    if summary.get("diff_mode"):
+        modes.append("[bold]diff 模式[/]（仅变更行）")
+    if summary.get("baseline_count"):
+        modes.append(f"[dim]基线豁免 {summary['baseline_count']} 个存量问题[/]")
+    if modes:
+        console.print("  " + " · ".join(modes))
+    console.print(f"  门禁阈值: [bold]{summary.get('fail_on', 'P0')}[/]")
+
+    # 问题详情（达到阈值优先，然后 P0/P1）
     all_issues = []
     for check_name, check_result in report.get("checks", {}).items():
         for issue in check_result.get("issues", []):
             issue["_check"] = check_name
             all_issues.append(issue)
 
-    p0_issues = [i for i in all_issues if i.get("severity") == "P0"]
-    if p0_issues:
-        console.print("\n[bold red]P0 阻断问题:[/]")
-        for issue in p0_issues[:10]:
+    fail_on = summary.get("fail_on", "P0")
+    hitting = [
+        i for i in all_issues
+        if not i.get("baseline")
+        and SEVERITY_ORDER.get(i.get("severity", "P3"), 9) <= SEVERITY_ORDER.get(fail_on, 0)
+    ] or [i for i in all_issues if i.get("severity") in ("P0", "P1") and not i.get("baseline")]
+
+    if hitting:
+        console.print(f"\n[bold red]问题详情（前 {min(len(hitting), 15)} 条）:[/]")
+        label_map = {
+            "static_analysis": "静态", "security_scan": "安全", "ai_smell": "异味",
+            "phantom_dependency": "幻觉依赖", "arch_compliance": "架构",
+        }
+        for issue in hitting[:15]:
             console.print(
-                f"  [red]●[/] [{issue['_check']}] "
+                f"  [red]●[/] [{label_map.get(issue['_check'], issue['_check'])}] "
                 f"[bold]{issue.get('title', '?')}[/] "
-                f"— {issue.get('file', '?')}:{issue.get('line', '?')}"
+                f"— {Path(issue.get('file', '?')).name}:{issue.get('line', '?')}"
             )
+            if len(hitting) > 15 and issue is hitting[-1]:
+                console.print(f"  [dim]... 其余 {len(hitting) - 15} 条见 JSON 报告[/]")
 
 
 def _print_audit_report(report: dict) -> None:
