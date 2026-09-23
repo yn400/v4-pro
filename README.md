@@ -10,7 +10,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)]()
 [![License](https://img.shields.io/badge/License-MIT-green)]()
 [![CI](https://github.com/yn400/v4-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/yn400/v4-pro/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Tests-114-passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-127-passing-brightgreen)]()
 [![Release](https://img.shields.io/github/v/release/yn400/v4-pro)](https://github.com/yn400/v4-pro/releases)
 
 </div>
@@ -33,7 +33,7 @@ AI 写代码又快又多，但它会：
 
 | 能力 | 说明 | 无需联网 |
 |------|------|:---:|
-| 🚫 **幻觉依赖检测** | import 了 PyPI/npm 上不存在的包 → P0 阻断（注册表查证+本地缓存，离线降级不误伤） | 离线可用* |
+| 🚫 **幻觉依赖检测** | import 编造包 / 依赖清单被污染 → P0 阻断；碰瓷包（与热门包编辑距离 ≤2）→ P1；新注册可疑包 → P2（注册表查证+缓存，离线降级不误伤） | 离线可用* |
 | 🧠 **AI 异味检测** | 吞异常 / 桩函数 / 重复定义 / 占位符密钥 / TODO 热点 | ✅ |
 | 🔐 **安全扫描** | SQL 注入 / 命令注入 / 不安全反序列化 / 硬编码密钥 / XSS / 弱哈希（AST+精确正则） | ✅ |
 | 🧊 **架构合规** | 冻结分层约束，检查 import 依赖方向 | ✅ |
@@ -68,9 +68,9 @@ docker run --rm -v $(pwd):/code ghcr.io/yn400/v4-pro verify --code /code
 ├─────────┼────────┼─────────┼──────────┼────────┼────┤
 │ 安全扫描    │   6    │     3     │      1       │     2      │ 0  │
 │ AI 代码异味 │   6    │     0     │      5       │     1      │ 0  │
-│ 幻觉依赖    │   1    │     1     │      0       │      0      │ 0  │
+│ 幻觉依赖    │   2    │     2     │      0       │      0      │ 0  │
 ├─────────┼────────┼─────────┼──────────┼────────┼────┤
-│ 合计        │   13   │     4     │      6       │     3      │ 0  │
+│ 合计        │   14   │     5     │      6       │     3      │ 0  │
 └─────────┴────────┴─────────┴──────────┴────────┴────┘
 
 问题详情:
@@ -79,11 +79,13 @@ docker run --rm -v $(pwd):/code ghcr.io/yn400/v4-pro verify --code /code
   ● [安全] 硬编码密钥/密码（字符串字面量赋值） — ai_slop_demo.py:16
   ● [幻觉依赖] 幻觉依赖: fastcsvparser 在 PyPI 上不存在
      ——AI 编造的包名，攻击者可能已抢注（slopsquatting）— ai_slop_demo.py:14
+  ● [幻觉依赖] 幻觉依赖: requets 在 PyPI 上不存在……
+     且包名与热门包 requests 高度相似（编辑距离 1）— ai_slop_demo.py:15
 
 ✗ 质量门禁未通过！ (exit code 1)
 ```
 
-13 个报告 = 演示文件里埋的 13 处真问题，**零误报**。埋了什么就报什么，没埋的不报。
+14 个报告 = 演示文件里埋的 14 处真问题，**零误报**。埋了什么就报什么，没埋的不报。
 
 ### 自门禁 · It gates itself
 
@@ -196,7 +198,7 @@ v4-pro run "做一个待办事项 App"
 ## 测试与质量 · Quality
 
 ```bash
-python -m pytest -v        # 114 个测试全部通过
+python -m pytest -v        # 127 个测试全部通过
 ```
 
 - 覆盖：检测规则正确性、误报抑制、抑制注释、基线/diff 过滤、SARIF 结构、真实 git 仓库集成
@@ -219,7 +221,7 @@ v4-pro/
 │   └── config.py               # 配置管理
 ├── examples/                   # AI-slop 演示文件（可自查复现）
 ├── presets/                    # 4 种项目类型预设
-└── tests/                      # 114 个测试
+└── tests/                      # 127 个测试
 ```
 
 ## 支持 · Supported

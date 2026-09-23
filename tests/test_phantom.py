@@ -125,3 +125,128 @@ class TestCache:
             c2.scan(Path(tmp))
             assert n_first == 1
             assert c2.stats["cache_hits"] == 1
+
+
+class TestTyposquat:
+    """盲区 B: 碰瓷包（存在但名字模仿热门包）。"""
+
+    def test_typosquat_import_flagged_p1(self):
+        # requets 与 requests 编辑距离 1，且真实存在于注册表 → P1
+        r = _scan("import requets\n", resolver=lambda n, e: "exists")
+        hits = [i for i in r["issues"] if i["rule_id"] == "PHANTOM/typosquat"]
+        assert len(hits) == 1
+        assert hits[0]["severity"] == "P1"
+        assert "requests" in hits[0]["title"]
+
+    def test_typosquat_and_fresh_escalates_p0(self):
+        # 碰瓷 + 新注册 → 升级 P0
+        now = __import__("time").time()
+        r = _scan("import requets\n",
+                  resolver=lambda n, e: ("exists", now - 10 * 86400))
+        hits = [i for i in r["issues"] if i["rule_id"] == "PHANTOM/typosquat"]
+        assert len(hits) == 1 and hits[0]["severity"] == "P0"
+
+    def test_famous_name_itself_not_flagged(self):
+        # requests 本尊不应被当成碰瓷
+        r = _scan("import requests\n",
+                  resolver=lambda n, e: ("exists", __import__("time").time() - 3000 * 86400))
+        assert not [i for i in r["issues"] if i["rule_id"] == "PHANTOM/typosquat"]
+
+    def test_missing_plus_typosquat_notes_similarity(self):
+        r = _scan("import requets\n", resolver=lambda n, e: "missing")
+        p0 = [i for i in r["issues"] if i["severity"] == "P0"]
+        assert len(p0) == 1 and "requests" in p0[0]["title"]
+
+    def test_short_names_skipped(self):
+        # 3 字符以下名字不做碰瓷比对（噪声太大）
+        r = _scan("import rqx\n", resolver=lambda n, e: "exists")
+        assert not [i for i in r["issues"] if i["rule_id"] == "PHANTOM/typosquat"]
+
+    def test_npm_typosquat(self):
+        r = _scan("import x from 'exprss';\n", filename="app.js",
+                  resolver=lambda n, e: "exists")
+        hits = [i for i in r["issues"] if i["rule_id"] == "PHANTOM/typosquat"]
+        assert len(hits) == 1 and hits[0]["severity"] == "P1"
+
+
+class TestFreshPackage:
+    """盲区 C: 新注册包 + 未声明。"""
+
+    def test_fresh_undeclared_p2(self):
+        now = __import__("time").time()
+        r = _scan("import someveryrarepkg\n",
+                  resolver=lambda n, e: ("exists", now - 30 * 86400))
+        hits = [i for i in r["issues"] if i["rule_id"] == "PHANTOM/fresh-package"]
+        assert len(hits) == 1 and hits[0]["severity"] == "P2"
+        assert not [i for i in r["issues"] if i["severity"] in ("P0", "P1")]
+
+    def test_old_package_not_fresh_flag(self):
+        now = __import__("time").time()
+        r = _scan("import someveryrarepkg\n",
+                  resolver=lambda n, e: ("exists", now - 3000 * 86400))
+        assert not [i for i in r["issues"] if i["rule_id"] == "PHANTOM/fresh-package"]
+
+    def test_unknown_created_no_fresh_flag(self):
+        r = _scan("import someveryrarepkg\n", resolver=lambda n, e: "exists")
+        assert not [i for i in r["issues"] if i["rule_id"] == "PHANTOM/fresh-package"]
+
+
+class TestDeclaredDepsScan:
+    """盲区 A: 依赖清单文件本身被幻觉污染。"""
+
+    def test_requirements_hallucinated_package_p0(self, tmp_path):
+        req = tmp_path / "requirements.txt"
+        req.write_text("requests==2.31.0\nfastcsvparser>=1.0\n")
+        (tmp_path / "app.py").write_text("import requests\n")
+
+        calls = []
+
+        def resolver(name, eco):
+            calls.append(name)
+            return "exists" if name == "requests" else "missing"
+
+        checker = PhantomDependencyChecker(
+            resolver=resolver, cache_path=tmp_path / ".v4pro_cache.json",
+            installed={"requests"},
+        )
+        r = checker.scan(tmp_path)
+        p0 = [i for i in r["issues"] if i["severity"] == "P0"]
+        assert len(p0) == 1
+        assert "fastcsvparser" in p0[0]["title"]
+        assert p0[0]["rule_id"] == "PHANTOM/declared-pypi"
+        assert p0[0]["line"] == 2  # requirements.txt 里那一行
+
+    def test_declared_own_package_skipped(self, tmp_path):
+        # pyproject 声明的是项目自身名字 → 不查
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "mypkg"\ndependencies = ["mypkg-sub"]\n'
+        )
+        pkg = tmp_path / "mypkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").touch()
+        (tmp_path / "mypkg_sub").mkdir()
+        (tmp_path / "mypkg_sub" / "__init__.py").touch()
+        checker = PhantomDependencyChecker(
+            resolver=lambda n, e: "missing", cache_path=tmp_path / ".c.json",
+        )
+        r = checker.scan(tmp_path)
+        assert r["issues"] == []
+
+    def test_declared_private_installed_package_skipped(self, tmp_path):
+        # 声明了私有内部包（本机已装、公网 404）→ 不误报
+        (tmp_path / "requirements.txt").write_text("my-internal-pkg==1.0\n")
+        checker = PhantomDependencyChecker(
+            resolver=lambda n, e: "missing", cache_path=tmp_path / ".c.json",
+            installed={"my-internal-pkg"},
+        )
+        r = checker.scan(tmp_path)
+        assert r["issues"] == []
+
+    def test_declared_typosquat_p1(self, tmp_path):
+        (tmp_path / "requirements.txt").write_text("requets>=1.0\n")
+        checker = PhantomDependencyChecker(
+            resolver=lambda n, e: "exists", cache_path=tmp_path / ".c.json",
+        )
+        r = checker.scan(tmp_path)
+        hits = [i for i in r["issues"] if i["rule_id"] == "PHANTOM/typosquat"]
+        assert len(hits) == 1 and hits[0]["severity"] == "P1"

@@ -12,6 +12,7 @@ import pickle
 import random
 import requests
 import fastcsvparser  # AI 编造的包 — PyPI 上不存在（slopsquatting 风险）
+import requets       # 碰瓷包 — 模仿 requests 的拼写
 
 API_KEY = "sk-live-a1b2c3d4e5f6g7h8"  # AI 直接硬编码了一个"看起来真"的密钥
 WEBHOOK_URL = "https://example.com/api/webhook"
