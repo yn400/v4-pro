@@ -250,6 +250,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "cache_ttl_exists": 30,
         "cache_ttl_missing": 7,
     },
+    "semgrep": {
+        "enabled": True,   # 检测到 semgrep 时自动启用深度扫描
+        "timeout": 180,
+    },
 }
 
 

@@ -1,0 +1,7 @@
+{
+  "expect": [
+    "SEC/sql-fstring",
+    "SEC/http-plaintext",
+    "SMELL/stub-implementation"
+  ]
+}

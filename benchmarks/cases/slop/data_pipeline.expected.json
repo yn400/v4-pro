@@ -1,0 +1,6 @@
+{
+  "expect": [
+    "SEC/unsafe-yaml",
+    "SMELL/except-swallow"
+  ]
+}

@@ -339,6 +339,7 @@ class WorkflowEngine:
         baseline_path: str | None = None,
         save_baseline: str | None = None,
         phantom_offline: bool = False,
+        use_semgrep: bool | None = None,
     ) -> dict[str, Any]:
         """
         Step 5 — 质量门禁。
@@ -354,6 +355,7 @@ class WorkflowEngine:
             baseline_path: 基线报告 — 存量问题标记为 baseline，不阻断
             save_baseline: 把本次结果保存为基线文件
             phantom_offline: 幻觉依赖检测离线模式（跳过注册表查询）
+            use_semgrep: 强制开/关 semgrep 深度扫描；None=自动（装了就用）
 
         Returns:
             验证报告 JSON
@@ -391,9 +393,15 @@ class WorkflowEngine:
         static = StaticAnalyzer().analyze(code_dir, extra_test_paths=test_paths)
         report["checks"]["static_analysis"] = static
 
-        # 检查 2: 安全扫描
+        # 检查 2: 安全扫描（semgrep 生效时内置重叠规则让位）
         logger.info("  [2/5] 安全扫描...")
-        security = SecurityScanner().scan(code_dir, extra_test_paths=test_paths)
+        from v4_pro.verify.semgrep_engine import COVERED_BUILTIN_RULES, SemgrepEngine
+        semgrep_cfg = gate_cfg.get("semgrep", {})
+        semgrep_enabled = use_semgrep if use_semgrep is not None else semgrep_cfg.get("enabled", True)
+        sg_engine = SemgrepEngine(timeout=semgrep_cfg.get("timeout", 180))
+        semgrep_active = semgrep_enabled and sg_engine.is_available()
+        skip = COVERED_BUILTIN_RULES if semgrep_active else None
+        security = SecurityScanner().scan(code_dir, extra_test_paths=test_paths, skip_rules=skip)
         report["checks"]["security_scan"] = security
 
         # 检查 3: AI 代码异味
@@ -412,6 +420,13 @@ class WorkflowEngine:
             ttl_missing=phantom_cfg.get("cache_ttl_missing", 7),
         ).scan(code_dir)
         report["checks"]["phantom_dependency"] = phantom
+
+        # 检查 5.5: semgrep 深度扫描（装了才跑）
+        if semgrep_active:
+            logger.info("  [+] semgrep 深度扫描...")
+            report["checks"]["semgrep"] = sg_engine.scan(code_dir)
+        elif semgrep_enabled:
+            logger.info("  [+] semgrep 未安装，深度扫描跳过（pip install semgrep 启用）")
 
         # 检查 5: 架构合规
         logger.info("  [5/5] 架构合规检查...")

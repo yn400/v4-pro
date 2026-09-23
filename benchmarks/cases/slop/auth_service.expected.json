@@ -1,0 +1,8 @@
+{
+  "expect": [
+    "SEC/hardcoded-secret",
+    "SEC/weak-random",
+    "SEC/weak-hash",
+    "SMELL/except-swallow"
+  ]
+}

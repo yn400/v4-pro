@@ -1,0 +1,6 @@
+{
+  "expect": [
+    "SEC/weak-random",
+    "SEC/weak-hash"
+  ]
+}

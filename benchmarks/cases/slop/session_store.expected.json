@@ -1,0 +1,7 @@
+{
+  "expect": [
+    "SMELL/todo-hotspot",
+    "SEC/unsafe-deserialize",
+    "SA/eq-true"
+  ]
+}

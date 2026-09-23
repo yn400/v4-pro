@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -100,8 +101,14 @@ class StaticAnalyzer:
         },
     ]
 
-    def analyze(self, code_dir: Path, extra_test_paths: list[str] | None = None) -> dict[str, Any]:
-        """对指定目录执行静态分析。"""
+    def analyze(self, code_dir: Path, extra_test_paths: list[str] | None = None,
+                allow_external: bool = True) -> dict[str, Any]:
+        """
+        对指定目录执行静态分析。
+
+        allow_external=False 时只用内置规则（跳过 pylint/eslint/oxlint），
+        供基准测试等需要确定性结果的场景使用。
+        """
         code_dir = Path(code_dir)
         if not code_dir.exists():
             return {
@@ -135,14 +142,14 @@ class StaticAnalyzer:
         tools_used = []
 
         if py_files:
-            pylint_issues, used_pylint = self._check_python(py_files, extra_test_paths)
+            pylint_issues, used_pylint = self._check_python(py_files, extra_test_paths, allow_external)
             all_issues.extend(pylint_issues)
             tools_used.append("pylint" if used_pylint else "builtin-py")
 
         if js_files:
-            eslint_issues, used_eslint = self._check_javascript(js_files, extra_test_paths)
-            all_issues.extend(eslint_issues)
-            tools_used.append("eslint" if used_eslint else "builtin-js")
+            js_issues, used_js_linter = self._check_javascript(js_files, extra_test_paths, code_dir, allow_external)
+            all_issues.extend(js_issues)
+            tools_used.append(("oxlint" if used_js_linter == "oxlint" else "eslint") if isinstance(used_js_linter, str) and used_js_linter in ("oxlint", "eslint") else ("builtin-js" if not used_js_linter else str(used_js_linter)))
 
         for i, issue in enumerate(all_issues):
             issue.setdefault("id", f"SA-{i+1:03d}")
@@ -172,7 +179,10 @@ class StaticAnalyzer:
                     files.append(path)
         return files
 
-    def _check_python(self, files: list[Path], extra_test_paths: list[str] | None) -> tuple[list[dict], bool]:
+    def _check_python(self, files: list[Path], extra_test_paths: list[str] | None,
+                      allow_external: bool = True) -> tuple[list[dict], bool]:
+        if not allow_external:
+            return self._builtin_check(files, self.BUILTIN_PYTHON_CHECKS, extra_test_paths) +                    self._print_check(files, extra_test_paths), False
         if self._has_command("pylint"):
             try:
                 return self._run_pylint(files), True
@@ -184,24 +194,76 @@ class StaticAnalyzer:
         issues.extend(self._print_check(files, extra_test_paths))
         return issues, False
 
-    def _check_javascript(self, files: list[Path], extra_test_paths: list[str] | None) -> tuple[list[dict], bool]:
+    def _check_javascript(self, files: list[Path], extra_test_paths: list[str] | None,
+                          code_dir: Path, allow_external: bool = True) -> tuple[list[dict], str | bool]:
+        """返回 (issues, 使用的工具)。工具: "oxlint" / "eslint" / False(内置)。"""
+        if not allow_external:
+            return self._builtin_check(files, self.BUILTIN_JS_CHECKS, extra_test_paths), False
+        # oxlint 优先: 单二进制、零配置、极快（目录级一次调用）
+        if self._has_command("oxlint"):
+            try:
+                return self._run_oxlint(code_dir), "oxlint"
+            except Exception as e:
+                logger.warning("oxlint 执行失败，降级: %s", e)
+        # eslint 次之
         if self._has_command("eslint"):
             try:
-                return self._run_eslint(files), True
+                return self._run_eslint(files), "eslint"
             except Exception as e:
                 logger.warning("eslint 执行失败，降级到内置检查: %s", e)
 
-        logger.info("eslint 未安装，使用内置规则检查 %d 个 JS 文件", len(files))
+        logger.info("oxlint/eslint 均未安装，使用内置规则检查 %d 个 JS 文件", len(files))
         return self._builtin_check(files, self.BUILTIN_JS_CHECKS, extra_test_paths), False
+
+    def _run_oxlint(self, code_dir: Path) -> list[dict]:
+        """运行 oxlint（目录级调用），解析其 JSON 输出。
+
+        oxlint 输出结构（实测 v1.85）:
+        {"diagnostics": [{"message", "code": "eslint(no-unused-vars)",
+          "severity": "warning"|"error"|"advice", "filename",
+          "labels": [{"span": {"line": N, ...}}]}], ...}
+        """
+        import json
+
+        issues: list[dict] = []
+        oxlint = self._resolve_cmd("oxlint") or "oxlint"
+        result = subprocess.run(
+            [oxlint, "--format=json", str(code_dir)],
+            capture_output=True, text=True, timeout=60,
+        )
+        stdout = result.stdout.strip()
+        if not stdout:
+            return issues
+        data = json.loads(stdout)
+        diagnostics = data.get("diagnostics", []) if isinstance(data, dict) else []
+        sev_map = {"error": "P1", "warning": "P2", "advice": "P3"}
+        for d in diagnostics:
+            filename = d.get("filename", "")
+            labels = d.get("labels") or []
+            line = 1
+            if labels:
+                line = labels[0].get("span", {}).get("line", 1)
+            code = d.get("code", "unknown")
+            rule_name = code.split("(")[-1].rstrip(")") if "(" in code else code
+            issues.append({
+                "severity": sev_map.get(d.get("severity", "warning"), "P2"),
+                "rule_id": f"oxlint/{rule_name}",
+                "title": d.get("message", "")[:150],
+                "file": filename,
+                "line": line,
+                "suggestion": d.get("help") or f"oxlint: {rule_name}",
+            })
+        return issues
 
     def _run_pylint(self, files: list[Path]) -> list[dict]:
         import json
 
+        pylint = self._resolve_cmd("pylint") or "pylint"
         issues = []
         for f in files:
             try:
                 result = subprocess.run(
-                    ["pylint", "--output-format=json", str(f)],
+                    [pylint, "--output-format=json", str(f)],
                     capture_output=True, text=True, timeout=30,
                 )
                 if result.stdout.strip():
@@ -225,11 +287,12 @@ class StaticAnalyzer:
     def _run_eslint(self, files: list[Path]) -> list[dict]:
         import json
 
+        eslint = self._resolve_cmd("eslint") or "eslint"
         issues = []
         for f in files:
             try:
                 result = subprocess.run(
-                    ["eslint", "--format=json", str(f)],
+                    [eslint, "--format=json", str(f)],
                     capture_output=True, text=True, timeout=30,
                 )
                 if result.stdout.strip():
@@ -298,9 +361,22 @@ class StaticAnalyzer:
         return issues
 
     @staticmethod
-    def _has_command(cmd: str) -> bool:
+    def _resolve_cmd(cmd: str) -> str | None:
+        """解析命令的完整路径。
+
+        Windows 上 npm/pip 安装的命令是 .cmd/.exe 垫片，
+        subprocess 不带完整路径时 CreateProcess 找不到 .cmd，
+        必须经 shutil.which（按 PATHEXT）解析。
+        """
+        return shutil.which(cmd)
+
+    @classmethod
+    def _has_command(cls, cmd: str) -> bool:
+        path = cls._resolve_cmd(cmd)
+        if not path:
+            return False
         try:
-            result = subprocess.run([cmd, "--version"], capture_output=True, timeout=5)
+            result = subprocess.run([path, "--version"], capture_output=True, timeout=5)
             return result.returncode == 0
         except Exception:
             return False

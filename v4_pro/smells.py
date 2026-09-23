@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # 占位符值模式 — AI 生成代码最爱留的假值
 _PLACEHOLDER_SECRET_PATTERNS = [
     re.compile(r"(?i)\b(your|my|insert|replace|enter|add)[_-]?(api[_-]?key|apikey|token|secret|password|passwd)"),
-    re.compile(r"(?i)^(x{3,}|changeme|change_me|change-me|dummy[_-]?(key|token|secret|pass)|fake[_-]?(key|token|secret)|test[_-]?api[_-]?key|placeholder)[!_]?"),
+    re.compile(r"(?i)^(x{3,}|changeme|change_me|change-me|dummy[_-]?(key|token|secret|pass)|fake[_-]?(key|token|secret)|test[_-]?api[_-]?key|placeholder)([!_].*)?$"),
     re.compile(r"^\$\{?[A-Z][A-Z0-9_]{2,}\}?$"),  # ${API_KEY} / $API_KEY 风格
     re.compile(r"(?i)^(api|secret|token|auth)[_-]?(key|token)$"),  # 字面值就叫 "API_KEY"
 ]
@@ -115,26 +115,48 @@ class AiSmellDetector:
                         and isinstance(body[0].value.value, str):
                     docstring_ids.add(id(body[0].value))
 
-        # 同名函数重复定义
-        seen_names: dict[str, int] = {}
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if node.name in seen_names:
-                    issues.append(self._issue(
-                        filepath, node.lineno, "SMELL/duplicate-function", "P1",
-                        f"函数 {node.name}() 在同一文件中定义了两次（第 {seen_names[node.name]} 行与第 {node.lineno} 行）"
-                        "——通常是 AI 改写代码时忘记删除旧版本",
-                        "删除其中一个实现；确认调用方使用的是哪个版本",
-                    ))
+        # 同名函数重复定义（按类作用域分组——不同类的同名方法是正常 OOP）
+        seen: dict[tuple, int] = {}
+
+        def _walk_with_scope(stmts, scope):
+            for stmt in stmts:
+                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    key = (scope, stmt.name)
+                    if key in seen:
+                        issues.append(self._issue(
+                            filepath, stmt.lineno, "SMELL/duplicate-function", "P1",
+                            f"函数 {scope + '.' if scope else ''}{stmt.name}() 在同一作用域定义了两次"
+                            f"（第 {seen[key]} 行与第 {stmt.lineno} 行）"
+                            "——通常是 AI 改写代码时忘记删除旧版本",
+                            "删除其中一个实现；确认调用方使用的是哪个版本",
+                        ))
+                    else:
+                        seen[key] = stmt.lineno
+                    _walk_with_scope(stmt.body, f"{scope}.{stmt.name}" if scope else stmt.name)
+                elif isinstance(stmt, ast.ClassDef):
+                    _walk_with_scope(stmt.body, f"{scope}.{stmt.name}" if scope else stmt.name)
                 else:
-                    seen_names[node.name] = node.lineno
+                    for child in ast.iter_child_nodes(stmt):
+                        _walk_with_scope([child], scope) if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) else None
+
+        _walk_with_scope(tree.body, "")
+
+        # 标记类内定义的方法（ast 无父指针）
+        for cls in ast.walk(tree):
+            if isinstance(cls, ast.ClassDef):
+                for stmt in cls.body:
+                    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        stmt._v4_in_class = True
 
         for node in ast.walk(tree):
-            # 桩函数
+            # 桩函数（模块级 P1；类方法常见于接口实现，降为 P3）
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if not test_file and self._is_stub(node):
+                    in_class = getattr(node, "_v4_in_class", False)
+                    is_private = node.name.startswith("_")
                     issues.append(self._issue(
-                        filepath, node.lineno, "SMELL/stub-implementation", "P1",
+                        filepath, node.lineno, "SMELL/stub-implementation",
+                        "P3" if (in_class or is_private) else "P1",
                         f"函数 {node.name}() 疑似桩实现（函数体只有 pass/.../NotImplementedError/返回常量 None）"
                         "——AI 常生成看起来完整、实际未实现的函数",
                         "补全实现，或用 TODO 注释显式标记未完成状态",

@@ -1,0 +1,95 @@
+rules:
+  - id: v4-sql-fstring-execute
+    languages: [python]
+    severity: ERROR
+    message: "SQL 用 f-string 拼接后执行——AI 生成代码最高频的注入点，改用参数化查询"
+    patterns:
+      - pattern-either:
+          - pattern: $CUR.execute(f"...{$X}...")
+          - pattern: $CUR.executemany(f"...{$X}...")
+          - pattern: $CUR.executescript(f"...{$X}...")
+
+  - id: v4-sql-format-execute
+    languages: [python]
+    severity: ERROR
+    message: "SQL 用 .format()/% 拼接后执行——改用参数化查询"
+    patterns:
+      - pattern-either:
+          - pattern: $CUR.execute("...".format(...))
+          - pattern: $CUR.execute("..." % ...)
+          - pattern: $CUR.execute("..." + $X)
+
+  - id: v4-eval-exec
+    languages: [python]
+    severity: ERROR
+    message: "eval()/exec() 动态执行代码——用 ast.literal_eval 或重构"
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: exec($X)
+
+  - id: v4-pickle-loads
+    languages: [python]
+    severity: ERROR
+    message: "pickle 反序列化不可信数据可导致任意代码执行——改用 JSON"
+    patterns:
+      - pattern-either:
+          - pattern: pickle.loads($X)
+          - pattern: pickle.load($X)
+
+  - id: v4-yaml-unsafe-load
+    languages: [python]
+    severity: ERROR
+    message: "yaml.load 可执行任意对象构造——改用 yaml.safe_load"
+    pattern: yaml.load(...)
+
+  - id: v4-os-system
+    languages: [python]
+    severity: WARNING
+    message: "os.system 执行系统命令——改用 subprocess.run 参数列表"
+    pattern: os.system(...)
+
+  - id: v4-subprocess-shell-true
+    languages: [python]
+    severity: WARNING
+    message: "subprocess 开启 shell=True——命令注入风险"
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: subprocess.check_output(..., shell=True, ...)
+
+  - id: v4-tls-verify-disabled
+    languages: [python]
+    severity: WARNING
+    message: "TLS 证书校验被关闭（verify=False / 不校验上下文）——AI 爱这样绕证书错误"
+    patterns:
+      - pattern-either:
+          - pattern: requests.$F(..., verify=False, ...)
+          - pattern: ssl._create_unverified_context()
+
+  - id: v4-weak-hash
+    languages: [python]
+    severity: WARNING
+    message: "MD5/SHA1 已不安全——安全场景用 SHA256 及以上"
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+
+  - id: v4-weak-random
+    languages: [python]
+    severity: INFO
+    message: "random 模块非加密安全——密钥/令牌场景用 secrets"
+    patterns:
+      - pattern-either:
+          - pattern: random.random(...)
+          - pattern: random.randint(...)
+          - pattern: random.choice(...)
+
+  - id: v4-tmpfile-mktemp
+    languages: [python]
+    severity: WARNING
+    message: "tempfile.mktemp 有竞态条件——改用 tempfile.NamedTemporaryFile 或 mkstemp"
+    pattern: tempfile.mktemp(...)

@@ -10,7 +10,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)]()
 [![License](https://img.shields.io/badge/License-MIT-green)]()
 [![CI](https://github.com/yn400/v4-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/yn400/v4-pro/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Tests-127-passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-133-passing-brightgreen)]()
 [![Release](https://img.shields.io/github/v/release/yn400/v4-pro)](https://github.com/yn400/v4-pro/releases)
 
 </div>
@@ -37,7 +37,8 @@ AI 写代码又快又多，但它会：
 | 🧠 **AI 异味检测** | 吞异常 / 桩函数 / 重复定义 / 占位符密钥 / TODO 热点 | ✅ |
 | 🔐 **安全扫描** | SQL 注入 / 命令注入 / 不安全反序列化 / 硬编码密钥 / XSS / 弱哈希（AST+精确正则） | ✅ |
 | 🧊 **架构合规** | 冻结分层约束，检查 import 依赖方向 | ✅ |
-| 📏 **静态分析** | pylint/eslint（装了就用）+ 内置降级规则 | ✅ |
+| 🔬 **深度扫描（可选）** | 检测到 [Semgrep](https://semgrep.dev) 自动启用 AST 级规则（11 条 Python + 3 条 JS）；检测到 [oxlint](https://oxc.rs) 自动接管 JS 深度检查 | ✅ |
+| 📏 **静态分析** | pylint/eslint + oxlint 自动检测（装了就用）+ 内置降级规则 | ✅ |
 
 <sub>*离线模式下幻觉检测降级为 P3 提示，绝不阻断门禁</sub>
 
@@ -86,11 +87,12 @@ docker run --rm -v $(pwd):/code ghcr.io/yn400/v4-pro verify --code /code
 ```
 
 14 个报告 = 演示文件里埋的 14 处真问题，**零误报**。埋了什么就报什么，没埋的不报。
+<sub>（内置引擎输出；若本机装有 Semgrep/oxlint，深度扫描会叠加发现——如 JS 演示里的 `eval` 只有 oxlint 能抓到）</sub>
 
 ### 自门禁 · It gates itself
 
-> 质量门禁工具最大的耻辱是自己的代码过不了自己的门。V4 Pro 在 CI 里运行
-> `v4-pro verify --code ./v4_pro/` —— 0 个 P0/P1，通过。
+> 质量门禁工具最大的耻辱是自己的代码过不了自己的门。V4 Pro 在 CI 里装上 Semgrep + oxlint 后运行
+> `v4-pro verify --code ./v4_pro/ --semgrep` —— 0 个 P0/P1，通过（深度引擎全开）。
 > `v4-pro audit` 自审：**0 发现，风险分 0**。（1.x 版本自审曾报 14 个误报、风险分 51——全部来自规则定义字符串的自指误报，2.0 已根治。）
 
 ## 门禁工程化 · Built for CI
@@ -195,14 +197,28 @@ v4-pro run "做一个待办事项 App"
 | `v4-pro research/define/design/generate` | 分步执行 | ✅ |
 | `v4-pro freeze` | 冻结架构规范 | ❌ |
 
+## 📊 基准报告 · Benchmark（诚实版）
+
+对内置检测器跑了标注基准（复现：`python benchmarks/run_benchmark.py`）：
+
+- **合成 AI-slop 集**（15 文件 / 35 处手工标注问题）：检出率 **35/35**
+- **干净集**（Python 标准库 10 个真实人类模块）：P0 误报 **0**；P1 信号 4 处，全部为已知可解释项：
+  - `dataclasses.py` 的 `exec()`——stdlib 元编程合法用法（Bandit 同样报），可用 `# v4pro:ignore` 抑制
+  - `selectors.py` 的 3 处裸 `except:`——pylint E722 同样报，属业界共识
+
+**诚实声明**：slop 集是项目作者构造的合成数据，标签由同一作者标注（自证局限）；
+真实世界分布下检出率必然低于此数字。基准的真实价值在过程中：
+它逼出了 5 个真实缺陷修复（`self.SECRET_KEY` 属性形式漏检、
+重复函数未按类作用域分组、空方法误报接口实现、占位符正则锚点缺陷、exec 严重度虚高）。
+
 ## 测试与质量 · Quality
 
 ```bash
-python -m pytest -v        # 127 个测试全部通过
+python -m pytest -v        # 133 个测试全部通过
 ```
 
 - 覆盖：检测规则正确性、误报抑制、抑制注释、基线/diff 过滤、SARIF 结构、真实 git 仓库集成
-- CI 矩阵（ubuntu/windows × py3.10-3.12）+ **自门禁 job**（自己的代码必须过自己的门 + AI-slop 演示必须被拦下）
+- CI 矩阵（ubuntu/windows × py3.10-3.12）+ **自门禁 job**（装上深度引擎后：自己的代码必须过自己的门 + AI-slop 演示必须被拦下 + 验证 Semgrep 真的产出了发现而非静默跳过）
 
 ## 项目结构 · Structure
 
@@ -221,7 +237,7 @@ v4-pro/
 │   └── config.py               # 配置管理
 ├── examples/                   # AI-slop 演示文件（可自查复现）
 ├── presets/                    # 4 种项目类型预设
-└── tests/                      # 127 个测试
+└── tests/                      # 133 个测试
 ```
 
 ## 支持 · Supported

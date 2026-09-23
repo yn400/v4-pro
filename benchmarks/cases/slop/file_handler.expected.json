@@ -1,0 +1,6 @@
+{
+  "expect": [
+    "SEC/unsafe-deserialize",
+    "SMELL/except-swallow"
+  ]
+}

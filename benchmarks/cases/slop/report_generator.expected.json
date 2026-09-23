@@ -1,0 +1,6 @@
+{
+  "expect": [
+    "SEC/sql-concat",
+    "SMELL/duplicate-function"
+  ]
+}

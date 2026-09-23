@@ -1,0 +1,7 @@
+{
+  "expect": [
+    "SEC/exec-dynamic",
+    "SMELL/except-swallow",
+    "SMELL/placeholder-value"
+  ]
+}

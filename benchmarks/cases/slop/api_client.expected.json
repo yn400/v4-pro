@@ -1,0 +1,6 @@
+{
+  "expect": [
+    "SMELL/placeholder-value",
+    "SA/print-instead-of-logging"
+  ]
+}

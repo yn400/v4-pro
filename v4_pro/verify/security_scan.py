@@ -29,13 +29,22 @@ class SecurityScanner:
     # ── 危险函数调用（AST 级）──
     DANGEROUS_CALLS = [
         {
-            "functions": ["eval", "exec"],
+            "functions": ["eval"],
             "rule_id": "SEC/dynamic-exec",
-            "title": "使用了 eval()/exec() 动态执行代码",
+            "title": "使用了 eval() 动态执行代码",
             "severity": "P0",
             "owasp": "A03:2021 – Injection",
             "cwe": "CWE-95",
             "suggestion": "避免使用 eval/exec，安全替代方案如 ast.literal_eval",
+        },
+        {
+            "functions": ["exec"],
+            "rule_id": "SEC/exec-dynamic",
+            "title": "使用了 exec() 动态执行代码",
+            "severity": "P1",
+            "owasp": "A03:2021 – Injection",
+            "cwe": "CWE-95",
+            "suggestion": "exec 用于元编程框架内部合法；应用代码避免使用",
         },
         {
             "functions": ["pickle.loads", "pickle.load", "cPickle.loads", "dill.loads"],
@@ -99,7 +108,7 @@ class SecurityScanner:
         },
         # 硬编码密钥（排除占位符 — 那类归 SMELL/placeholder-secret）
         {
-            "pattern": r"""(?i)(api_key|apikey|secret|password|passwd|token|jwt_secret)\s*=\s*["'](?!your)(?!change)(?!test)(?!dummy)(?!placeholder)(?!xxx)(?!<)[^'"]{8,}["']""",
+            "pattern": r"""(?i)(?:[\w.]*\.)?(?:api[_-]?key|apikey|secret[_-]?key|secret|password|passwd|token|jwt_secret)\s*=\s*["'](?!your)(?!change)(?!test)(?!dummy)(?!placeholder)(?!xxx)(?!<)[^'"]{8,}["']""",
             "rule_id": "SEC/hardcoded-secret",
             "title": "硬编码密钥/密码（字符串字面量赋值）",
             "severity": "P0",
@@ -197,8 +206,13 @@ class SecurityScanner:
         },
     ]
 
-    def scan(self, code_dir: Path, extra_test_paths: list[str] | None = None) -> dict[str, Any]:
-        """对指定目录执行安全扫描。"""
+    def scan(self, code_dir: Path, extra_test_paths: list[str] | None = None,
+             skip_rules: set[str] | None = None) -> dict[str, Any]:
+        """
+        对指定目录执行安全扫描。
+
+        skip_rules: 需要跳过的 rule_id 集合（semgrep 生效时让位给深度规则，避免一鱼两报）。
+        """
         code_dir = Path(code_dir)
         if not code_dir.exists():
             return {
@@ -248,6 +262,9 @@ class SecurityScanner:
         for i, issue in enumerate(unique):
             issue.setdefault("id", f"SEC-{i+1:03d}")
             issue.setdefault("category", "security_scan")
+
+        if skip_rules:
+            unique = [i for i in unique if i.get("rule_id") not in skip_rules]
 
         passed = not any(i.get("severity") == "P0" for i in unique)
 

@@ -1,6 +1,42 @@
 # Changelog
 
+## [2.2.0] - 2026-09-24
+
+### Added — Semgrep 深度扫描引擎（可选增强）
+- 内置 AI 场景规则集（v4_pro/semgrep_rules/，11 条 Python + 3 条 JS AST 级规则）
+- 检测到本机 semgrep 自动启用；`--semgrep/--no-semgrep` 强制开关；未安装自动降级内置规则
+- 深度规则覆盖的内置规则自动让位（SEC/sql-*、SEC/dynamic-exec 等 12 条），避免一鱼两报
+- 失败永不阻断：semgrep 崩溃/超时/输出异常均降级为空结果 + 提示
+
+### Added — JS/TS 引擎链（oxlint → eslint → 内置）
+- 优先调用 oxlint（单二进制零配置，目录级一次调用），实测 v1.85 JSON 解析
+- **修复 Windows 关键 bug**: npm/pip 安装的 .cmd 垫片命令 subprocess 解析不到
+  （CreateProcess 限制），改用 shutil.which 全路径解析——此前 Windows 用户
+  的 eslint/pylint 集成全部静默失效
+- StaticAnalyzer 新增 allow_external 开关（基准测试等场景强制确定性）
+
+### Added — 基准测试框架（诚实版）
+- benchmarks/run_benchmark.py：合成标注集（15 文件/35 发现）+ 标准库干净集（10 模块）
+- 首轮基准即暴露 5 个真实缺陷，全部修复：
+  1. self.SECRET_KEY 属性形式硬编码密钥漏检（正则要求变量名紧贴等号）
+  2. SMELL/duplicate-function 未按类作用域分组——不同类同名方法误报
+     （selectors.py 26 处、queue.py 15 处误报）
+  3. SMELL/stub-implementation 对类方法/下划线私有函数过激——接口实现
+     惯用法误报，类方法与私有函数降级 P3
+  4. 占位符正则丢失行尾锚——"placeholder too large..." 注释文本误报
+  5. exec() 严重度虚高 P0→P1（stdlib 元编程合法使用，与 Bandit 对齐）
+- 修复后：合成集检出 35/35；干净集 P0 误报 0、P1 信号 4 处（全部可解释）
+- eval(P0)/exec(P1) 拆分为独立规则 SEC/dynamic-exec / SEC/exec-dynamic
+
+### CI
+- self-gate job 加装 semgrep + oxlint：深度引擎全开跑自门禁，
+  并断言 semgrep 在演示集上真实产出发现（防静默跳过）
+
+### Tests
+- 127 → 133 个测试
+
 ## [2.1.0] - 2026-09-23
+
 
 ### Added — 幻觉依赖检测三层升级（从"查存在"到"查可疑"）
 - **碰瓷包检测（typosquatting）**: 包名与内置热门包名单（PyPI/npm 共 400+ 知名包）编辑距离 ≤2

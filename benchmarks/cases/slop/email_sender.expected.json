@@ -1,0 +1,6 @@
+{
+  "expect": [
+    "SMELL/placeholder-secret",
+    "SMELL/stub-implementation"
+  ]
+}

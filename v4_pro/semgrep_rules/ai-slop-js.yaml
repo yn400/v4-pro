@@ -1,0 +1,21 @@
+rules:
+  - id: v4-js-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "eval() 动态执行代码——改用 JSON.parse 或安全实现"
+    pattern: eval(...)
+
+  - id: v4-js-document-write
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: "document.write() 有 XSS 风险——用安全的 DOM API"
+    pattern: document.write(...)
+
+  - id: v4-js-childprocess-exec
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: "child_process.exec 拼接命令有注入风险——用 execFile 并参数化"
+    patterns:
+      - pattern-either:
+          - pattern: require('child_process').exec(...)
+          - pattern: $CP.exec(...)

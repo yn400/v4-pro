@@ -285,6 +285,12 @@ def generate(source_file: str, provider: str | None) -> None:
     help="幻觉依赖检测跳过注册表联网查询",
 )
 @click.option(
+    "--semgrep/--no-semgrep",
+    "semgrep_mode",
+    default=None,
+    help="强制开/关 semgrep 深度扫描（默认自动：装了就用）",
+)
+@click.option(
     "--format", "-fmt", "output_format",
     type=click.Choice(["rich", "json", "sarif"]),
     default="rich",
@@ -305,6 +311,7 @@ def verify(
     baseline_path: str | None,
     save_baseline: str | None,
     offline: bool,
+    semgrep_mode: bool | None,
     output_format: str,
     output: str | None,
 ) -> None:
@@ -335,6 +342,7 @@ def verify(
             baseline_path=baseline_path,
             save_baseline=save_baseline,
             phantom_offline=offline,
+            use_semgrep=semgrep_mode,
         )
 
         if output_format == "sarif":
@@ -681,6 +689,7 @@ def _print_verify_report(report: dict) -> None:
             "security_scan": "安全扫描",
             "ai_smell": "AI 代码异味",
             "phantom_dependency": "幻觉依赖",
+            "semgrep": "Semgrep 深度扫描",
             "arch_compliance": "架构合规",
         }
         table.add_row(
@@ -727,7 +736,7 @@ def _print_verify_report(report: dict) -> None:
         console.print(f"\n[bold red]问题详情（前 {min(len(hitting), 15)} 条）:[/]")
         label_map = {
             "static_analysis": "静态", "security_scan": "安全", "ai_smell": "异味",
-            "phantom_dependency": "幻觉依赖", "arch_compliance": "架构",
+            "phantom_dependency": "幻觉依赖", "semgrep": "深度", "arch_compliance": "架构",
         }
         for issue in hitting[:15]:
             console.print(

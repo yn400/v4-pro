@@ -1,0 +1,6 @@
+{
+  "expect": [
+    "SEC/subprocess-shell",
+    "SEC/os-command"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "expect": [
+    "SMELL/duplicate-function",
+    "SEC/sql-percent-format"
+  ]
+}

@@ -53,15 +53,32 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install
-        run: pip install -e .
+      - name: Install deep engines (semgrep + oxlint)
+        run: |
+          pip install -e .
+          pip install semgrep
+          npm install -g oxlint
 
-      - name: Our own source must PASS the gate
-        run: v4-pro verify --code ./v4_pro/
+      - name: Our own source must PASS the gate (with deep engines)
+        run: |
+          v4-pro verify --code ./v4_pro/ --semgrep
+          echo "self-gate passed with semgrep + oxlint active"
 
       - name: AI-slop demo must FAIL the gate (detectors alive)
         run: |
-          if v4-pro verify --code ./examples/; then
+          if v4-pro verify --code ./examples/ --semgrep; then
             echo "::error::examples/ should have been blocked"; exit 1
           fi
           echo "gate correctly blocked the AI-slop demo"
+
+      - name: Semgrep engine actually produced findings (not silently skipped)
+        run: |
+          v4-pro verify --code ./examples/ --semgrep --format json > gate.json
+          python -c "
+          import json, sys
+          r = json.load(open('gate.json', encoding='utf-8'))
+          assert 'semgrep' in r['checks'], 'semgrep check missing — engine did not run'
+          n = len(r['checks']['semgrep']['issues'])
+          assert n > 0, 'semgrep produced no findings on AI-slop demo'
+          print(f'semgrep findings on demo: {n}')
+          "
