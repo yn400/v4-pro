@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "v4-pro"
-version = "2.2.0"
+version = "2.2.1"
 description = "AI Code Quality Gate — 自动检测 AI 代码的 Bug/安全/架构问题"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -52,6 +52,7 @@ include = ["v4_pro*"]
 
 [tool.setuptools.package-data]
 "v4_pro" = ["py.typed"]
+"v4_pro.semgrep_rules" = ["*.yaml"]
 
 # prompts/ 目录在项目根目录，用户从项目根运行时自动找到
 # 若要作为 pip 包分发，需将 prompts/ 移入 v4_pro/ 并更新 engine.py 中的路径

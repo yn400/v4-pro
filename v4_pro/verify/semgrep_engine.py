@@ -22,7 +22,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-RULES_DIR = Path(__file__).parent / "semgrep_rules"
+RULES_DIR = Path(__file__).parent.parent / "semgrep_rules"  # v4_pro/semgrep_rules/
 
 _SEV_MAP = {"ERROR": "P0", "WARNING": "P1", "INFO": "P2"}
 

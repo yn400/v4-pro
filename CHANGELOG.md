@@ -1,6 +1,21 @@
 # Changelog
 
+## [2.2.1] - 2026-09-24
+
+### Fixed — CI 抓出的两个发布级 bug
+1. **Semgrep 规则路径错误**: 引擎在 `v4_pro/verify/semgrep_rules` 找规则，
+   实际位于 `v4_pro/semgrep_rules`——本机未装 semgrep 从未暴露，
+   CI 深度引擎一开即现形（表现为深度扫描静默产出 0 条发现）
+2. **wheel 缺少规则文件**: semgrep_rules 未作为包数据打入 wheel，
+   导致 pip 安装的用户深度扫描必然失败——semgrep_rules 升级为
+   正式子包并显式声明 package-data，本地构建 wheel 验证通过
+
+### CI
+- self-gate 新增 semgrep 诊断步骤：validate + 原始输出 + 引擎 notes 全量落日志，
+  断言深度引擎真实产出发现（防静默跳过）
+
 ## [2.2.0] - 2026-09-24
+
 
 ### Added — Semgrep 深度扫描引擎（可选增强）
 - 内置 AI 场景规则集（v4_pro/semgrep_rules/，11 条 Python + 3 条 JS AST 级规则）
