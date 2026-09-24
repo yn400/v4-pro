@@ -1,6 +1,23 @@
 # Changelog
 
+## [2.3.0] - 2026-09-24
+
+### Added — 三份独立基准证据（发 Show HN 前的功课）
+- **基准 C（真实攻击包）**: OSV 官方 PyPI 转储中 11,744 个真实恶意供应链攻击包，
+  固定 seed 抽样 150 个跑完整幻觉检测管线——信号覆盖率 71.3%，
+  P0 直接拦截 71.3%（绝大多数恶意包已被 PyPI 下架）；未触发的 43 个诚实公示
+- **基准 A（真实人类 bug）**: BugsInPy 数据集 5 项目 24 个真实 bug，
+  pre-image blob 还原带缺陷文件——文件级命中 17%、行级定位 0%，
+  刻意保留以诚实划界：确定性模式工具不做逻辑缺陷检测
+- **基准脚本**: benchmarks/phantom_recall.py（多轮重试排干网络失败）、
+  benchmarks/bugsinpy_recall.py（bug.info 元数据定位 pre-image）、
+  benchmarks/remote_zip.py（HTTP Range 远程读大 ZIP，不必下 10GB）
+- README 增加英文摘要与三份基准汇总
+- 数据溯源: OSV 官方转储 / Spracks et al. USENIX Security'25 幻觉包研究
+  （Zenodo 制品仅含复现工具，名单未公开——故以 OSV 实攻击数据替代）
+
 ## [2.2.1] - 2026-09-24
+
 
 ### Fixed — CI 抓出的两个发布级 bug
 1. **Semgrep 规则路径错误**: 引擎在 `v4_pro/verify/semgrep_rules` 找规则，

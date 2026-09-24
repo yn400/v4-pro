@@ -17,6 +17,14 @@
 
 ---
 
+<div align="left">
+
+**English**: v4-pro is an open-source quality gate for AI-generated code. It detects **hallucinated dependencies** (slopsquatting defense — validated against 11,744 real-world malicious packages from the OSV database, 71.3% P0 interception), **AI-specific code smells** (swallowed exceptions, stub implementations, placeholder secrets), and **security patterns** — with baseline ratchet, git-diff gating, SARIF output, and zero external dependencies. `pip install v4-pro` → `v4-pro verify --code ./src/`
+
+</div>
+
+---
+
 ## 为什么需要它 · Why
 
 AI 写代码又快又多，但它会：
@@ -197,19 +205,28 @@ v4-pro run "做一个待办事项 App"
 | `v4-pro research/define/design/generate` | 分步执行 | ✅ |
 | `v4-pro freeze` | 冻结架构规范 | ❌ |
 
-## 📊 基准报告 · Benchmark（诚实版）
+## 📊 基准报告 · Benchmark（三份独立证据）
 
-对内置检测器跑了标注基准（复现：`python benchmarks/run_benchmark.py`）：
+**① 合成 AI-slop 集**（复现：`python benchmarks/run_benchmark.py`）
 
-- **合成 AI-slop 集**（15 文件 / 35 处手工标注问题）：检出率 **35/35**
-- **干净集**（Python 标准库 10 个真实人类模块）：P0 误报 **0**；P1 信号 4 处，全部为已知可解释项：
-  - `dataclasses.py` 的 `exec()`——stdlib 元编程合法用法（Bandit 同样报），可用 `# v4pro:ignore` 抑制
-  - `selectors.py` 的 3 处裸 `except:`——pylint E722 同样报，属业界共识
+- 15 文件 / 35 处手工标注问题：检出率 **35/35**
+- 干净集（Python 标准库 10 个真实人类模块）：P0 误报 **0**，P1 信号 4 处全部可解释
+- 诚实声明：合成集出题人与标注人同为作者（自证局限）；
+  其真实价值是过程中逼出了 5 个检测器缺陷修复
 
-**诚实声明**：slop 集是项目作者构造的合成数据，标签由同一作者标注（自证局限）；
-真实世界分布下检出率必然低于此数字。基准的真实价值在过程中：
-它逼出了 5 个真实缺陷修复（`self.SECRET_KEY` 属性形式漏检、
-重复函数未按类作用域分组、空方法误报接口实现、占位符正则锚点缺陷、exec 严重度虚高）。
+**② 真实攻击包**（OSV 官方 PyPI 转储，11,744 个真实供应链攻击包，复现：`python benchmarks/phantom_recall.py`）
+
+- 固定 seed 抽样 150 个真实恶意包，逐个跑完整幻觉依赖检测管线
+- **信号覆盖率 71.3%**（107/150），其中 **P0 直接拦截 71.3%**——
+  绝大多数恶意包已被 PyPI 下架，AI 推荐这些名字时即被拦截
+- 未触发的 43 个：名字正常且仍在线的恶意包——行为分析超出确定性检查的射程（已诚实公示名单）
+
+**③ 真实人类 bug**（BugsInPy 数据集，5 个知名开源项目 24 个真实 bug，复现：`python benchmarks/bugsinpy_recall.py`）
+
+- 文件级命中 **17%**，行级定位 **0%** —— 刻意保留的诚实数字：
+  BugsInPy 的 bug 多为逻辑缺陷，确定性模式工具（包括 Bandit/Semgrep 默认规则）
+  在同类任务上同样接近零。**v4-pro 不做逻辑缺陷检测**——那是测试套件与
+  AI 代码评审的职责，v4-pro 补的是它们之间的模式级空档
 
 ## 测试与质量 · Quality
 

@@ -9,7 +9,7 @@
 PYPI_POPULAR = frozenset({
     # Web 框架
     "django", "flask", "fastapi", "tornado", "starlette", "sanic",
-    "bottle", "pyramid", "aiohttp", "falcon",
+    "bottle", "pyramid", "aiohttp", "falcon", "websocket-client", "flower", "channels",
     # 数据科学
     "numpy", "pandas", "scipy", "matplotlib", "seaborn", "plotly",
     "scikit-learn", "statsmodels", "polars", "pyarrow", "sympy",
@@ -18,8 +18,8 @@ PYPI_POPULAR = frozenset({
     "openai", "anthropic", "langchain", "langgraph", "llama-index",
     "accelerate", "peft", "diffusers", "onnx", "onnxruntime",
     # HTTP / 网络
-    "requests", "urllib3", "httpx", "aiofiles", "websockets",
-    "websocket-client", "grpcio", "paramiko", "curl-cffi",
+    "requests", "urllib3", "httpx", "aiofiles", "websockets", "websocket",
+    "grpcio", "paramiko", "curl-cffi",
     # API / 服务
     "uvicorn", "gunicorn", "celery", "redis", "rq", "dramatiq",
     # 数据库

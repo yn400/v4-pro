@@ -44,3 +44,12 @@ temp_verify_*
 .v4pro_cache.json
 gate_base.json
 *.baseline.json
+
+# 基准数据: 大文件/临时缓存不入库（小样本标签文件保留）
+benchmarks/data/.phantom_cache.json
+benchmarks/data/LLM_*.json
+benchmarks/data/SO_*.json
+benchmarks/data/*.zip
+benchmarks/data/*.pdf
+benchmarks/data/paper_text.txt
+benchmarks/data/zenodo_entries.json
